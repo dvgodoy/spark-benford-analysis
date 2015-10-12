@@ -1,2 +1,1 @@
-# spark-benford-analysis
-Benford Analysis package for Apache Spark
+## Every Spark Package must have a readme in order to be published.
