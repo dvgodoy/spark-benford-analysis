@@ -6,18 +6,15 @@ import BigInt._
 object SimpleApp {
 
   class MomentsSums (val pSum: BigInt = 0, val pSumP2: BigInt = 0, val pSumP3: BigInt = 0, val pSumP4: BigInt = 0, val n: BigInt = 0) {
-
-    def this(sample: DenseVector[BigInt]) {
-      this(sum(sample), sum(sample :* sample), sum(sample :* sample :* sample), sum(sample :* sample :* sample :* sample), sample.length)
-    }
-
     def + (that: MomentsSums): MomentsSums = new MomentsSums(pSum + that.pSum, pSumP2 + that.pSumP2, pSumP3 + that.pSumP3, pSumP4 + that.pSumP4, n + that.n)
-
     def apply() = List(pSum, pSumP2, pSumP3, pSumP4, n)
   }
 
   object MomentsSums {
-    def apply(sample: DenseVector[BigInt]): MomentsSums = new MomentsSums(sample)
+    def apply(sample: DenseVector[BigInt]): MomentsSums = {
+      val sampleP2 = sample :* sample
+      new MomentsSums(sum(sample), sum(sampleP2), sum(sampleP2 :* sample), sum(sampleP2 :* sampleP2), sample.length)
+    }
   }
 
   def boot(//mult: Multinomial[DenseVector[Double],Int],
