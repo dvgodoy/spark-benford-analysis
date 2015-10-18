@@ -5,24 +5,15 @@ import BigInt._
 
 object SimpleApp {
 
-  class MomentsSums(sample: DenseVector[BigInt],
-                     pSum: BigInt = 0,
-                     pSumP2: BigInt = 0,
-                     pSumP3: BigInt = 0,
-                     pSumP4: BigInt = 0,
-                     n: BigInt = 0) {
-    private val sampleP2 = sample :* sample
-    val dSum: BigInt = pSum + sum(sample)
-    val dSumP2: BigInt = pSumP2 + sum(sampleP2)
-    val dSumP3: BigInt = pSumP3 + sum(sample :* sampleP2)
-    val dSumP4: BigInt = pSumP4 + sum(sampleP2 :* sampleP2)
-    val nSum = n + sample.length
+  class MomentsSums (val pSum: BigInt = 0, val pSumP2: BigInt = 0, val pSumP3: BigInt = 0, val pSumP4: BigInt = 0, val n: BigInt = 0) {
 
-    def +(sample: DenseVector[BigInt]): MomentsSums = {
-      new MomentsSums(sample, dSum, dSumP2, dSumP3, dSumP4, nSum)
+    def this(sample: DenseVector[BigInt]) {
+      this(sum(sample), sum(sample :* sample), sum(sample :* sample :* sample), sum(sample :* sample :* sample :* sample), sample.length)
     }
 
-    def apply() = List(dSum, dSumP2, dSumP3, dSumP4, nSum)
+    def + (that: MomentsSums): MomentsSums = new MomentsSums(pSum + that.pSum, pSumP2 + that.pSumP2, pSumP3 + that.pSumP3, pSumP4 + that.pSumP4, n + that.n)
+
+    def apply() = List(pSum, pSumP2, pSumP3, pSumP4, n)
   }
 
   object MomentsSums {
@@ -47,9 +38,9 @@ object SimpleApp {
       boot(mult,
         size - chunk,
         chunk,
-        d1d2Sums + d1d2,
-        d1Sums + d1,
-        d2Sums + d2,
+        d1d2Sums + MomentsSums(d1d2),
+        d1Sums + MomentsSums(d1),
+        d2Sums + MomentsSums(d2),
         d1d2ProdSum + sum(d1 :* d2)
       )
     }
@@ -87,7 +78,7 @@ object SimpleApp {
     println(d1())
     println(d2())
     println(d1d2prod)
-    println(d1.dSum.toDouble/d1.nSum.toDouble)
+    println(d1.pSum.toDouble/d1.n.toDouble)
     //println("Lines with the: %s".format(numTHEs))
   }
 }
