@@ -2,6 +2,8 @@ import breeze.linalg._
 import breeze.stats.distributions._
 import com.dvgodoy.spark.benford.distributions._
 import BigInt._
+import collection.parallel.immutable.ParVector
+import scala.collection.parallel.ForkJoinTaskSupport
 
 object SimpleApp {
 
@@ -17,7 +19,7 @@ object SimpleApp {
     }
   }
 
-  def boot(//mult: Multinomial[DenseVector[Double],Int],
+  /*def boot(//mult: Multinomial[DenseVector[Double],Int],
           mult: Benford,
           size:Int,
           chunk: Int,
@@ -41,7 +43,7 @@ object SimpleApp {
         d1d2ProdSum + sum(d1 :* d2)
       )
     }
-  }
+  }*/
 
   def time[A](a: => A, n:Int) = {
     var times = List[Long]()
@@ -58,7 +60,7 @@ object SimpleApp {
   def main(args: Array[String]) {
     //val benf = DenseVector.range(10, 100).map(x => math.log10(1.0 + 1.0/x))
     //val mult = new Multinomial(DenseVector.vertcat(DenseVector.zeros[Double](10),benf))
-    val mult = Benford(true)
+//    val mult = Benford(true)
 
     val logFile = "src/data/sample.txt"
     //val sc = new SparkContext("local", "Simple App", "/usr/local/share/spark", List("target/scala-2.11/simple-project_2.11-1.0.jar"))
@@ -70,12 +72,49 @@ object SimpleApp {
     //time(boot(10000,sumTotal,sumTotalSquare), 100)
     //time(boot(mult,1000000,1000), 100)
 
-    val (d1d2, d1, d2, d1d2prod) = boot(mult,1000,1000)
+/*    val (d1d2, d1, d2, d1d2prod) = boot(mult,1000,1000)
     println(d1d2())
     println(d1())
     println(d2())
     println(d1d2prod)
-    println(d1.pSum.toDouble/d1.n.toDouble)
+    println(d1.pSum.toDouble/d1.n.toDouble)*/
     //println("Lines with the: %s".format(numTHEs))
+    //time(Benford().sample(1000000),100)
+    //time(Benford().sample(1000).groupBy(identity).map(x => (x._1,x._2.length)).toList,100)
+    //val y = Benford().sample(100).groupBy(identity).map(x => (x._1,x._2.length)).toList
+    //val d = Benford().mult.samples
+    //println(y)
+
+    //val x = ParVector((0 until 100): _*).map(_ => scala.util.Random.nextDouble())
+    //println(x)
+    //time(Benford().sample(1000).groupBy(identity).map(x => (x._1,x._2.length)).toList,100)
+    //time(ParVector((0 until 1000000): _*).map(_ => scala.util.Random.nextDouble()),100)
+    /*def parSample = {
+      val x = Benford().sample(1000000).par
+      x.tasksupport = new ForkJoinTaskSupport(new scala.concurrent.forkjoin.ForkJoinPool(8))
+      x.groupBy(identity).map(x => (x._1,x._2.length)).toList
+    }
+    time(parSample,100)*/
+    //val x = new Uniform(0,1).samples
+    //val x = Benford().mult.samples
+    val r = new scala.util.Random
+    val n1 = math.log10(2.0)
+    val n2 = math.log10(3.0)
+    //time({val x = DenseVector(0 until 100000: _*).mapValues(_ => r.nextDouble()).toArray; x.count(x => x < n1); x.count(x => x < n2)},100)
+    //val dist = List(0.3,0.4,0.4,1.0)
+    val dist = accumulate(DenseVector.range(1, 10).map(x => math.log10(1.0 + 1.0 / x))).toArray
+    //def findDist(x: Double): Int = dist.filter(y => y < x).length + 1
+    //println(DenseVector(0 until 10: _*).mapValues(_ => r.nextDouble()).map(x => dist.filter(y => y < x).length + 1))
+    //time(DenseVector(0 until 100000: _*).mapValues(_ => r.nextDouble()).mapValues(x => dist.filter(y => y < x).length + 1),100)
+    //time(dist.map(x => DenseVector(0 until 100000: _*).mapValues(_ => r.nextDouble()).toArray.filter(y => y > x).length),100)
+    //time(DenseVector(0 until 10000: _*).mapValues(_ => x.next),100)
+    //println(DenseVector(0 until 100: _*).mapValues(_ => (x.next,1)))
+    //.groupBy(identity).map(x => (x._1,x._2.length)).toList
+    //time(Benford().sample1(1000000),100)
+    //time(Benford().sample(1000000),100)
+    time(Benford(1000000),100)
+    val x = Benford(1000000)
+    time(x.buildBenfordAliasTable(),100)
+    time(x.sample,100)
   }
 }
