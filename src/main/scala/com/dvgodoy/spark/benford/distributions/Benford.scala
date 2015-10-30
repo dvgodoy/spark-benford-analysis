@@ -1,89 +1,34 @@
 package com.dvgodoy.spark.benford.distributions
 
-import breeze.stats.distributions._
-import breeze.linalg.{sum, accumulate, DenseVector}
+import breeze.linalg.DenseVector
+import breeze.stats.distributions.{RandBasis, Multinomial}
+import com.dvgodoy.spark.benford.constants._
+import com.dvgodoy.spark.benford.util._
 import org.apache.commons.math3.random.MersenneTwister
-import scala.collection.mutable
-import scala.collection.immutable.HashMap
-import BigInt._
-
-/**
- * Created by dvgodoy on 17/10/15.
- */
-
-abstract class distBenford {
-  val rand: RandBasis = new RandBasis(new MersenneTwister())
-  val prob: DenseVector[Double] = DenseVector[Double](0)
-  lazy val aliasTable: BenfordAliasTable = buildBenfordAliasTable()
-
-  val draw: IndexedSeq[(Int,Double)] = null
-
-  //def mult = new Multinomial(prob)
-  //def sample1(n: Int): IndexedSeq[BigInt] = mult.sample(n).map(BigInt(_))
-
-  def buildBenfordAliasTable(): BenfordAliasTable = {
-    val nOutcomes = prob.length
-    val aliases = DenseVector.zeros[Int](nOutcomes)
-    val sum = breeze.linalg.sum(prob)
-
-    val probs = DenseVector(prob.map { param => param / sum * nOutcomes }.toArray)
-    val (iSmaller, iLarger) = (0 until nOutcomes).partition(probs(_) < 1d)
-    val smaller = mutable.Stack(iSmaller:_*)
-    val larger = mutable.Stack(iLarger:_*)
-
-    while (smaller.nonEmpty && larger.nonEmpty) {
-      val small = smaller.pop()
-      val large = larger.pop()
-      aliases(small) = large
-      probs(large) -= (1d - probs(small))
-      if (probs(large) < 1)
-        smaller.push(large)
-      else
-        larger.push(large)
-    }
-
-    new BenfordAliasTable(probs, aliases, nOutcomes, rand)
-  }
-
-  //def findOutcome(roll: Int, toss: Double): Int = if (toss < aliasTable.probs(roll)) roll + 1 else aliasTable.aliases(roll) + 1
-  def findOutcome(roll: Int, toss: Double): Int = if (toss < aliasTable.probsMap(roll)) roll + 1 else aliasTable.aliasesMap(roll) + 1
-
-  def rollToss(n: Int): IndexedSeq[(Int,Double)] = {
-    (1 to n).map(x => (rand.randInt(aliasTable.nOutcomes).get(),rand.uniform.get()))
-  }
-
-  def sample: IndexedSeq[BigInt] = {
-    draw.map(x => BigInt(findOutcome(x._1, x._2)))
-    //draw.map(x => BigInt(if (x._2 < aliasTable.probsMap(x._1)) x._1 + 1 else aliasTable.aliasesMap(x._1) + 1))
-  }
-}
-
-class BenfordAliasTable(val probs: DenseVector[Double],
-                            val aliases: DenseVector[Int],
-                            val nOutcomes: Int,
-                            val rand: RandBasis) {
-  val probsMap: HashMap[Int,Double] = HashMap(probs.iterator.toArray: _*)
-  val aliasesMap: HashMap[Int,Int] = HashMap(aliases.iterator.toArray: _*)
-}
-
-private object distBenfordD1 extends distBenford {
-  override val prob = DenseVector.range(1, 10).map(x => math.log10(1.0 + 1.0 / x))
-}
-
-private object distBenfordD2 extends distBenford {
-  override val prob = DenseVector((10 to 19).map(x => (List.range(x, 100, 10).map(x => math.log10(1.0 + 1.0 / x))).sum).toArray)
-}
-
-private object distBenfordD1D2 extends distBenford {
-  override val prob = DenseVector.vertcat(DenseVector.zeros[Double](10), DenseVector.range(10, 100).map(x => math.log10(1.0 + 1.0 / x)))
-}
-
-class Benford(FSD: Boolean, SSD: Boolean, n: Int) extends distBenford {
-  override val prob = (if (FSD && SSD) distBenfordD1D2 else if (FSD && !SSD) distBenfordD1 else distBenfordD2).prob
-  override val draw = rollToss(n)
-}
+import org.apache.spark.SparkContext
 
 object Benford {
-  def apply(n: Int): Benford = new Benford(true, false, n)
-  def apply(FSD: Boolean, n: Int) = new Benford(FSD, true, n)
+  val probMultinomialD1 = DenseVector.vertcat(DenseVector.zeros[Double](1), DenseVector(probabilitiesD1))
+  val probMultinomialD2 = DenseVector.vertcat(DenseVector.zeros[Double](1), DenseVector(probabilitiesD2))
+  val probMultinomialD1D2 = DenseVector.vertcat(DenseVector.zeros[Double](10), DenseVector(probabilitiesD1D2))
+}
+
+class Benford {
+  def generateBootstrapSamples(sc: SparkContext, sampleSize: Int, numSamples: Int) = {
+    val bootRDD = sc.parallelize(1 to numSamples).mapPartitionsWithIndex { (idx, iter) =>
+      implicit val rand = new RandBasis(new MersenneTwister(idx + 42))
+      val mult = new Multinomial(Benford.probMultinomialD1D2)
+      iter.flatMap(sample => mult.sample(sampleSize)).map(n => (n, 1))
+    }
+    val moments = bootRDD.reduceByKey(_+_)
+      .map(num => calcMoments(num._1,num._2))
+      .reduce((xMom, yMom) => addMoments(xMom, yMom))
+    val bootStats = calcStats(moments)
+  }
+
+  def calcFrequenciesSample(sc: SparkContext, filePath: String) = {
+    val digitsRDD = sc.textFile(filePath)
+      .map(value => (findD1D2(value.toDouble), 1))
+      .reduceByKey(_+_)
+  }
 }
