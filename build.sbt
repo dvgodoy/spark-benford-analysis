@@ -1,9 +1,9 @@
 // Your sbt build file. Guides on how to write one can be found at
 // http://www.scala-sbt.org/0.13/docs/index.html
 
-scalaVersion := "2.11.4"
+scalaVersion := "2.11.6"
 
-sparkVersion := "1.5.0"
+sparkVersion := "1.4.1"
 
 spName := "dvgodoy/spark-benford-analysis"
 
@@ -13,14 +13,12 @@ version := "0.0.1"
 // All Spark Packages need a license
 licenses := Seq("Apache-2.0" -> url("http://opensource.org/licenses/Apache-2.0"))
 
-//libraryDependencies += "org.apache.spark" %% "spark-core" % "1.5.1"
-//libraryDependencies += "holdenk" % "spark-testing-base" % "1.4.1_0.1.1" % "test"
-
-//libraryDependencies += "brkyvz" % "lazy-linalg" % "0.1.0"
+libraryDependencies += "org.apache.spark" %% "spark-core" % "1.4.1" % "provided"
 
 libraryDependencies  ++= Seq(
   // other dependencies here
-  "org.scalatest" %% "scalatest" % "2.2.4",
+  "org.scalatest" %% "scalatest" % "2.2.1" % "test",
+  "org.scalatestplus" %% "play" % "1.4.0-M3" % "test",
   "org.scalanlp" %% "breeze" % "0.11.2",
   // native libraries are not included by default. add this if you want them (as of 0.7)
   // native libraries greatly improve performance, but increase jar sizes.
@@ -32,25 +30,27 @@ libraryDependencies  ++= Seq(
   "org.scalanlp" %% "breeze-viz" % "0.11.2"
 )
 
-//libraryDependencies += "com.holdenkarau" % "spark-testing-base_2.10" % "0.1.3"
-
 resolvers += "Akka Repository" at "http://repo.akka.io/releases"
 
 resolvers += "Maven" at "http://repo1.maven.org/maven2"
-
-//resolvers += "Spark Packages Repo" at "http://dl.bintray.com/spark-packages/maven"
-
-resolvers ++= Seq(
-  // other resolvers here
-  // if you want to use snapshot builds (currently 0.12-SNAPSHOT), use this.
-  "Sonatype Releases" at "https://oss.sonatype.org/content/repositories/releases/"
-)
 
 spShortDescription := "Benford Analysis for Apache Spark package"
 
 spDescription :=
   """Benford Analysis for Apache Spark package.
   """.stripMargin
+
+//libraryDependencies += "com.holdenkarau" % "spark-testing-base_2.10" % "0.1.3"
+//libraryDependencies += "holdenk" % "spark-testing-base" % "1.4.1_0.1.1" % "test"
+//libraryDependencies += "brkyvz" % "lazy-linalg" % "0.1.0"
+
+//resolvers += "Spark Packages Repo" at "http://dl.bintray.com/spark-packages/maven"
+
+//resolvers ++= Seq(
+  // other resolvers here
+  // if you want to use snapshot builds (currently 0.12-SNAPSHOT), use this.
+//  "Sonatype Releases" at "https://oss.sonatype.org/content/repositories/releases/"
+//)
 
 //credentials += Credentials(Path.userHome / ".ivy2" / ".sbtcredentials")
 
