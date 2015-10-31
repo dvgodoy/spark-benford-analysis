@@ -2,7 +2,6 @@ package com.dvgodoy.spark.benford.distributions
 
 import com.dvgodoy.spark.benford.constants._
 import com.dvgodoy.spark.benford.distributions.Bootstrap._
-import com.dvgodoy.spark.benford.util.BootStats
 import org.apache.spark.SparkContext
 
 object Benford {
@@ -12,8 +11,16 @@ object Benford {
 }
 
 class Benford {
-  def statsBenford(sc: SparkContext, sampleSize: Int, numSamples: Int): BootStats = {
-    val bootRDD = generateBootstrapSamples(sc, Benford.probMultinomialD1D2, sampleSize, numSamples)
+  def statsBenford(sc: SparkContext, sampleSize: Int, numSamples: Int, FSD: Boolean, SSD: Boolean): BootStats = {
+    assert (FSD | SSD, "A significant digit must be selected")
+
+    val prob = if (FSD) {
+        if (SSD) Benford.probMultinomialD1D2 else Benford.probMultinomialD1
+      } else {
+      Benford.probMultinomialD2
+    }
+
+    val bootRDD = generateBootstrapSamples(sc, prob, sampleSize, numSamples)
     val momentsRDD = calcMomentsSamples(bootRDD)
     groupStats(calcStatsSamples(momentsRDD))
   }
