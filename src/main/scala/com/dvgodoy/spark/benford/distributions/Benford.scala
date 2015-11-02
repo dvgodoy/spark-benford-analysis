@@ -22,6 +22,6 @@ class Benford {
 
     val bootRDD = generateBootstrapSamples(sc, prob, sampleSize, numSamples)
     val momentsRDD = calcMomentsSamples(bootRDD)
-    groupStats(calcStatsSamples(momentsRDD))
+    //groupStats(calcStatsSamples(momentsRDD))
   }
 }
