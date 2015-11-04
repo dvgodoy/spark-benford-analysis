@@ -1,16 +1,13 @@
 package com.dvgodoy.spark.benford.distributions
 
 import breeze.linalg.DenseVector
-import breeze.stats.distributions.{Multinomial, RandBasis}
+import breeze.stats.distributions.RandBasis
 import com.dvgodoy.spark.benford.util._
 import org.apache.commons.math3.random.MersenneTwister
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import scala.collection.mutable
 
-/**
- * Created by dvgodoy on 31/10/15.
- */
 object Bootstrap {
 
   private def rollToss(nOutcomes: Int, rand: RandBasis): (Int, Double) = {
@@ -54,7 +51,7 @@ object Bootstrap {
     calcFrequencies(digitsCounts)
   }*/
 
-  private def generateBootstrapTable(sc: SparkContext, prob: Array[Double], sampleSize: Int, numSamples: Int): RDD[(Long, (Int, (Int, Double)))] = {
+  def generateBootstrapTable(sc: SparkContext, prob: Array[Double], sampleSize: Int, numSamples: Int): RDD[(Long, (Int, (Int, Double)))] = {
     val nOutcomes = prob.length
     assert(nOutcomes == 90)
     sc.parallelize(1 to numSamples).mapPartitionsWithIndex { (idx, iter) =>
@@ -64,14 +61,14 @@ object Bootstrap {
     }
   }
 
-  def generateBootstrapSamples(sc: SparkContext, prob: Array[Double], sampleSize: Int, numSamples: Int): RDD[((Int, Int), Int)] = {
+  /*def generateBootstrapSamples(sc: SparkContext, prob: Array[Double], sampleSize: Int, numSamples: Int): RDD[((Int, Int), Int)] = {
     assert(prob.length == 90)
     sc.parallelize(1 to numSamples).mapPartitionsWithIndex { (idx, iter) =>
       implicit val rand = new RandBasis(new MersenneTwister(idx + 42))
       val mult = new Multinomial(DenseVector(prob))
       iter.flatMap(sample => mult.sample(sampleSize).map(n => ((sample, n), 1)))
     }
-  }
+  }*/
 
   case class OutcomeByLevel(idx: Long, idxLevel: Long, depth: Int, sample: Int, n: Int)
   def generateBootstrapOutcomes(bootstrapTableRDD: RDD[(Long, (Int, (Int, Double)))], levelsRDD: RDD[Level], aliasMap: Map[Long,AliasTable]): RDD[OutcomeByLevel] = {
@@ -87,8 +84,7 @@ object Bootstrap {
       .map { case ((sample, n), count) => (sample, calcMoments(n, count))}
       .reduceByKey(_ + _)
   }*/
-  case class MomentsByLevel(idxLevel: Long, depth: Int, sample: Int, moments: Moments)
-  // TO DO - calculate moments for FSD and SSD only
+  case class MomentsByLevel(idxLevel: Long, depth: Int, sample: Int, moments: MomentsDigits)
   def calcMomentsSamples(bootRDD: RDD[OutcomeByLevel]): RDD[MomentsByLevel] = {
     bootRDD.map { case OutcomeByLevel(idx, idxLevel, depth, sample, n) => ((idxLevel, depth, sample, n), 1) }
       .reduceByKey(_ + _)
@@ -97,26 +93,56 @@ object Bootstrap {
       .map { case ((idxLevel, depth, sample), moments) => MomentsByLevel(idxLevel, depth, sample, moments) }
   }
 
-  case class StatsByLevel(idxLevel: Long, depth: Int, sample: Int, stats: Stats)
+  case class StatsByLevel(idxLevel: Long, depth: Int, sample: Int, stats: StatsDigits)
   def calcStatsSamples(momentsRDD: RDD[MomentsByLevel]): RDD[StatsByLevel] = {
-    momentsRDD.map { case MomentsByLevel(idxLevel, depth, sample, moments) => StatsByLevel(idxLevel, depth, sample, calcStats(moments)) }
+    momentsRDD.map { case MomentsByLevel(idxLevel, depth, sample, moments) => StatsByLevel(idxLevel, depth, sample, calcStatsDigits(moments)) }
   }
 
-  def groupStats(statsRDD: RDD[StatsByLevel]): RDD[((Long, Int), Stats)] = {
+  def groupStats(statsRDD: RDD[StatsByLevel]): RDD[((Long, Int), StatsDigits)] = {
     //statsRDD.filter { case StatsByLevel(idxLevel, depth, sample, stats) => depth == 1 }.collect()
     statsRDD.map { case StatsByLevel(idxLevel, depth, sample, stats) => ((idxLevel, depth), stats) }.reduceByKey(_+_)
     // for each stat: sort and toArray
   }
 
-  def calcStatsCIs(groupStatsRDD: RDD[((Long, Int), Stats)], conf: Array[Double], t0: Stats): RDD[((Long, Int), StatsCI)] = {
-    groupStatsRDD.map { case ((idxLevel, depth), stats) => ((idxLevel, depth), stats.calcBcaCI(conf, t0)) }
+  case class StatsCIByLevel(idxLevel: Long, depth: Int, CIs: CIDigits)
+  def calcStatsCIs(dataStatsRDD: RDD[((Long, Int), StatsDigits)], groupStatsRDD: RDD[((Long, Int), StatsDigits)], conf: Array[Double]): RDD[StatsCIByLevel] = {
+    groupStatsRDD.join(dataStatsRDD)
+      .map { case ((idxLevel, depth), (groupStats, dataStats)) => StatsCIByLevel(idxLevel, depth, groupStats.calcBcaCI(conf, dataStats)) }
   }
 
+  def calcDataStats(levelsRDD: RDD[Level]): RDD[((Long, Int), StatsDigits)] = {
+    val originalRDD = levelsRDD.map { case Level(idxLevel, depth, idx, value, d1d2) => OutcomeByLevel(idx, idxLevel, depth, 1, d1d2) }
+    val momentsOriginalRDD = calcMomentsSamples(originalRDD)
+    val statsOriginalRDD = calcStatsSamples(momentsOriginalRDD)
+    groupStats(statsOriginalRDD)
+  }
+
+  def calcBootStats(sc: SparkContext, dataRDD: RDD[((Long, Double, Int), Array[String])], numSamples: Int, conf: Array[Double]): (Array[((String, Int), Long)], RDD[StatsCIByLevel]) = {
+    val (uniqLevels, levelsRDD) = findLevels(dataRDD)
+    val dataStatsRDD = calcDataStats(levelsRDD)
+    val (aliasMap, freqRDD) = calcFrequenciesLevels(levelsRDD)
+
+    val sampleSize = dataRDD.count().toInt
+    val level0 = freqRDD.filter { case FreqByLevel(idxLevel, freq) => freq.count == sampleSize }.collect()(0)
+    val prob = level0.freq.freqD1D2
+
+    val bootTableRDD = generateBootstrapTable(sc, prob, sampleSize, numSamples)
+    val bootRDD = generateBootstrapOutcomes(bootTableRDD, levelsRDD, aliasMap)
+    val momentsRDD = calcMomentsSamples(bootRDD)
+    val statsRDD = calcStatsSamples(momentsRDD)
+    val groupStatsRDD = groupStats(statsRDD)
+    (uniqLevels, calcStatsCIs(dataStatsRDD, groupStatsRDD, conf))
+  }
+
+  def findStatsByIdx(statsCIRDD: RDD[StatsCIByLevel], idx: Int): Array[StatsCIByLevel] = {
+    statsCIRDD.filter { case StatsCIByLevel(idxLevel, depth, stats) => idxLevel == idx }.collect()
+  }
   /*def groupStats(stats: Array[Stats]): BootStats = {
     BootStats(stats.map(_.n).sum, stats.map(_.mean), stats.map(_.variance), stats.map(_.skewness), stats.map(_.kurtosis), stats.map(_.pearson))
   }*/
 
-  def calcFrequencies(digitsCounts: List[(Int, Int)]): (Int, Array[Double], Array[Double], Array[Double]) = {
+  case class Frequencies(count: Int, freqD1D2: Array[Double], freqD1: Array[Double], freqD2: Array[Double])
+  def calcFrequencies(digitsCounts: List[(Int, Int)]): Frequencies = {
     //val digitsTotal = digitsCounts.map(t => t._2).sum
     val digitsTotal = digitsCounts.map { case (d1d2, count) => count }.sum
     val countsD1D2 = digitsCounts ::: (10 to 99).toSet.diff(digitsCounts.map(_._1).toSet).toList.map(n => (n, 0))
@@ -141,7 +167,7 @@ object Bootstrap {
       .map { case (d2, arrayCounts) => (d2, arrayCounts.map { case (d2, count) => count }.sum/digitsTotal.toDouble) }
       .toArray.sorted.map(_._2)
 
-    (digitsTotal, frequenciesD1, frequenciesD2, frequenciesD1D2)
+    Frequencies(digitsTotal, frequenciesD1D2, frequenciesD1, frequenciesD2)
   }
 
   def loadData(sc: SparkContext, filePath: String): RDD[((Long, Double, Int), Array[String])] = {
@@ -176,8 +202,8 @@ object Bootstrap {
                                         .zipWithIndex
                                         .map(l => (t.slice(1, l._2 + 2).foldLeft("L")(_ + "." + _), l._2)))) // RDD [(value, Array([level, level depth]))]*/
 
-  //case class FreqLevel(idxLevel: Long, freqD1: Array[Double], freqD2: Array[Double], freqD1D2: Array[Double])
-  def calcFrequenciesLevels(levelsRDD: RDD[Level]): (Map[Long,AliasTable], RDD[(Long, (Int, Array[Double], Array[Double], Array[Double]))]) = {
+  case class FreqByLevel(idxLevel: Long, freq: Frequencies)
+  def calcFrequenciesLevels(levelsRDD: RDD[Level]): (Map[Long,AliasTable], RDD[FreqByLevel]) = {
     /*val levelsCountRDD = levelsRDD
       .flatMap(t => t._2.map(x => ((x._2, x._1, findD1D2(t._1.toDouble)), 1)))                                  // RDD [((level depth, level, d1d2), 1)]
       .reduceByKey(_ + _)                                                                                       // RDD [((level depth, level, d1d2), count)]
@@ -197,8 +223,8 @@ object Bootstrap {
 
     // RDD [((level depth, level), (# elements, freqD1, freqD2, freqD1D2))]
     //val freqLevelsRDD = levelsCountRDD.groupByKey().map { case ((depth, name), counts) => ((depth, name), calcFrequencies(counts.toList)) }
-    val freqLevelsRDD = levelsCountRDD.groupByKey().map { case (idxLevel, counts) => (idxLevel, calcFrequencies(counts.toList)) }
-    val aliasMap = freqLevelsRDD.map { case (idxLevel, (count, probd1, probd2, probd1d2)) => (idxLevel, buildAliasTable(probd1d2)) }.collect().toMap
+    val freqLevelsRDD = levelsCountRDD.groupByKey().map { case (idxLevel, counts) => FreqByLevel(idxLevel, calcFrequencies(counts.toList)) }
+    val aliasMap = freqLevelsRDD.map { case FreqByLevel(idxLevel, freq) => (idxLevel, buildAliasTable(freq.freqD1D2)) }.collect().toMap
 
     (aliasMap, freqLevelsRDD)
   }

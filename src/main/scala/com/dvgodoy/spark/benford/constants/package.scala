@@ -6,15 +6,19 @@ import com.dvgodoy.spark.benford.util._
  * Created by dvgodoy on 30/10/15.
  */
 package object constants {
-  val probabilitiesD1 = (1 to 9).map(x => math.log10(1.0 + 1.0 / x)).toArray
-  val probabilitiesD2 = (10 to 19).map(x => List.range(x, 100, 10).map(x => math.log10(1.0 + 1.0 / x)).sum).toArray
-  val probabilitiesD1D2 = (10 to 99).map(x => math.log10(1.0 + 1.0 / x)).toArray
+  val BenfordProbabilitiesD1 = (1 to 9).map(x => math.log10(1.0 + 1.0 / x)).toArray
+  val BenfordProbabilitiesD2 = (10 to 19).map(x => List.range(x, 100, 10).map(x => math.log10(1.0 + 1.0 / x)).sum).toArray
+  val BenfordProbabilitiesD1D2 = (10 to 99).map(x => math.log10(1.0 + 1.0 / x)).toArray
 
-  val momentsD1 = (1 to 9, probabilitiesD1).zipped.map((n, p) => calcMoments(n, p)).reduce(addMoments)
-  val momentsD2 = (0 to 9, probabilitiesD2).zipped.map((n, p) => calcMoments(n, p)).reduce(addMoments)
-  val momentsD1D2 = (10 to 99, probabilitiesD1D2).zipped.map((n, p) => calcMoments(n, p)).reduce(addMoments)
+  private val BenfordMoments = (10 to 99, BenfordProbabilitiesD1D2).zipped.map((n, p) => calcMoments(n, p)).reduce(_ + _)
+  val BenfordMomentsD1D2 = BenfordMoments.d1d2
+  val BenfordMomentsD1 = BenfordMoments.d1
+  val BenfordMomentsD2 = BenfordMoments.d2
 
-  val statsD1 = calcStats(momentsD1)
-  val statsD2 = calcStats(momentsD2)
-  val statsD1D2 = calcStats(momentsD1D2)
+  private val BenfordStats = calcStatsDigits(BenfordMoments)
+  val BenfordStatsD1D2 = BenfordStats.d1d2
+  val BenfordStatsD1 = BenfordStats.d1
+  val BenfordStatsD2 = BenfordStats.d2
+  val BenfordStatsR = calcRegs(BenfordMomentsD1D2, BenfordMomentsD1, BenfordMomentsD2)
+  val BenfordStatsDigits = StatsDigits (BenfordStatsD1D2, BenfordStatsD1, BenfordStatsD2, BenfordStatsR)
 }
