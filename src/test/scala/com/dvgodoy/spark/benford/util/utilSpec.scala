@@ -1,7 +1,6 @@
 package com.dvgodoy.spark.benford.util
 
 import org.scalatestplus.play.PlaySpec
-import play.api.Play
 
 /**
  * Created by dvgodoy on 31/10/15.
@@ -103,19 +102,19 @@ class utilSpec extends PlaySpec {
       stat.n must be(1.0 +- tolerance)
     }
     "calculate mean" in {
-      stat.mean must be(13.375 +- tolerance)
+      stat.mean(0) must be(13.375 +- tolerance)
     }
     "calculate variance" in {
-      stat.variance must be(13.234375 +- tolerance)
+      stat.variance(0) must be(13.234375 +- tolerance)
     }
     "calculate skewness" in {
-      stat.skewness must be(2.2677868380 +- tolerance)
+      stat.skewness(0) must be(2.2677868380 +- tolerance)
     }
     "calculate kurtosis" in {
-      stat.kurtosis must be(3.1428571428 +- tolerance)
+      stat.kurtosis(0) must be(3.1428571428 +- tolerance)
     }
     "calculate pearson" in {
-      stat.pearson must be(2.5 +- tolerance)
+      stat.pearson(0) must be(2.5 +- tolerance)
     }
   }
 

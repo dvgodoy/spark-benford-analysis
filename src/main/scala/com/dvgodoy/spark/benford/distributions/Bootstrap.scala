@@ -7,12 +7,12 @@ import org.apache.commons.math3.random.MersenneTwister
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import scala.collection.mutable
-import scala.collection.mutable.ListBuffer
 
 /**
  * Created by dvgodoy on 31/10/15.
  */
 object Bootstrap {
+
   private def rollToss(nOutcomes: Int, rand: RandBasis): (Int, Double) = {
     (rand.randInt(nOutcomes).get(),rand.uniform.get())
   }
@@ -20,6 +20,7 @@ object Bootstrap {
   private case class AliasTable(modProb: DenseVector[Double], aliases: DenseVector[Int], nOutcomes: Int)
   private def buildAliasTable(prob: Array[Double]): AliasTable = {
     val nOutcomes = prob.length
+    assert(nOutcomes == 90)
     val aliases = DenseVector.zeros[Int](nOutcomes)
     val sum = breeze.linalg.sum(prob)
 
@@ -55,6 +56,7 @@ object Bootstrap {
 
   private def generateBootstrapTable(sc: SparkContext, prob: Array[Double], sampleSize: Int, numSamples: Int): RDD[(Long, (Int, (Int, Double)))] = {
     val nOutcomes = prob.length
+    assert(nOutcomes == 90)
     sc.parallelize(1 to numSamples).mapPartitionsWithIndex { (idx, iter) =>
       val rand = new RandBasis(new MersenneTwister(idx + 42))
       iter.flatMap(sample => Array.fill(sampleSize)(rollToss(nOutcomes, rand)).zipWithIndex
@@ -63,6 +65,7 @@ object Bootstrap {
   }
 
   def generateBootstrapSamples(sc: SparkContext, prob: Array[Double], sampleSize: Int, numSamples: Int): RDD[((Int, Int), Int)] = {
+    assert(prob.length == 90)
     sc.parallelize(1 to numSamples).mapPartitionsWithIndex { (idx, iter) =>
       implicit val rand = new RandBasis(new MersenneTwister(idx + 42))
       val mult = new Multinomial(DenseVector(prob))
@@ -85,6 +88,7 @@ object Bootstrap {
       .reduceByKey(_ + _)
   }*/
   case class MomentsByLevel(idxLevel: Long, depth: Int, sample: Int, moments: Moments)
+  // TO DO - calculate moments for FSD and SSD only
   def calcMomentsSamples(bootRDD: RDD[OutcomeByLevel]): RDD[MomentsByLevel] = {
     bootRDD.map { case OutcomeByLevel(idx, idxLevel, depth, sample, n) => ((idxLevel, depth, sample, n), 1) }
       .reduceByKey(_ + _)
@@ -102,6 +106,10 @@ object Bootstrap {
     //statsRDD.filter { case StatsByLevel(idxLevel, depth, sample, stats) => depth == 1 }.collect()
     statsRDD.map { case StatsByLevel(idxLevel, depth, sample, stats) => ((idxLevel, depth), stats) }.reduceByKey(_+_)
     // for each stat: sort and toArray
+  }
+
+  def calcStatsCIs(groupStatsRDD: RDD[((Long, Int), Stats)], conf: Array[Double], t0: Stats): RDD[((Long, Int), StatsCI)] = {
+    groupStatsRDD.map { case ((idxLevel, depth), stats) => ((idxLevel, depth), stats.calcBcaCI(conf, t0)) }
   }
 
   /*def groupStats(stats: Array[Stats]): BootStats = {
