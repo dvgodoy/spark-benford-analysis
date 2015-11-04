@@ -9,9 +9,6 @@ import scala.{specialized=>spec}
 import scala.reflect.ClassTag
 import scala.collection.mutable.ArraySeq
 
-/**
- * Created by dvgodoy on 30/10/15.
- */
 package object util {
   def average[T](xs: Iterable[T])(implicit num: Numeric[T]):Double =
     num.toDouble(xs.sum) / xs.size

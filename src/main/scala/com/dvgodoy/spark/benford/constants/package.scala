@@ -2,9 +2,6 @@ package com.dvgodoy.spark.benford
 
 import com.dvgodoy.spark.benford.util._
 
-/**
- * Created by dvgodoy on 30/10/15.
- */
 package object constants {
   val BenfordProbabilitiesD1 = (1 to 9).map(x => math.log10(1.0 + 1.0 / x)).toArray
   val BenfordProbabilitiesD2 = (10 to 19).map(x => List.range(x, 100, 10).map(x => math.log10(1.0 + 1.0 / x)).sum).toArray
