@@ -76,7 +76,15 @@ object Bootstrap {
     statsRDD.map { case StatsByLevel(idxLevel, depth, sample, stats) => ((idxLevel, depth), stats) }.reduceByKey(_+_)
   }
 
-  case class StatsCIByLevel(idxLevel: Long, depth: Int, CIs: CIDigits)
+  case class StatsCIByLevel(idxLevel: Long, depth: Int, CIs: CIDigits) {
+    def overlaps(that: StatsCIByLevel) = {
+      assert(this.idxLevel == that.idxLevel && this.depth == that.depth)
+      this.CIs.overlaps(that.CIs)
+    }
+    def contains(exact: StatsDigits) = {
+      this.CIs.contains(exact)
+    }
+  }
   def calcStatsCIs(dataStatsRDD: RDD[((Long, Int), StatsDigits)], groupStatsRDD: RDD[((Long, Int), StatsDigits)], conf: Array[Double]): RDD[StatsCIByLevel] = {
     groupStatsRDD.join(dataStatsRDD)
       .map { case ((idxLevel, depth), (groupStats, dataStats)) => StatsCIByLevel(idxLevel, depth, groupStats.calcBcaCI(conf, dataStats)) }
@@ -106,8 +114,12 @@ object Bootstrap {
     (uniqLevels, calcStatsCIs(dataStatsRDD, groupStatsRDD, conf))
   }
 
-  def findStatsByIdx(statsCIRDD: RDD[StatsCIByLevel], idx: Int): Array[StatsCIByLevel] = {
-    statsCIRDD.filter { case StatsCIByLevel(idxLevel, depth, stats) => idxLevel == idx }.collect()
+  def findStatsByIdx(statsCIRDD: RDD[StatsCIByLevel], idx: Int): RDD[StatsCIByLevel] = {
+    statsCIRDD.filter { case StatsCIByLevel(idxLevel, depth, stats) => idxLevel == idx }
+  }
+
+  def findStatsByDepth(statsCIRDD: RDD[StatsCIByLevel], level: Int): RDD[StatsCIByLevel] = {
+    statsCIRDD.filter { case StatsCIByLevel(idxLevel, depth, stats) => depth == level }
   }
 
   case class Frequencies(count: Int, freqD1D2: Array[Double], freqD1: Array[Double], freqD2: Array[Double])
@@ -167,4 +179,26 @@ object Bootstrap {
 
     (aliasMap, freqLevelsRDD)
   }
+
+  def calcOverlaps(bootStatsCIRDD: RDD[StatsCIByLevel], benfordStatsCIRDD: RDD[StatsCIByLevel]) = {
+    //BenfordStatsDigits
+    assert(bootStatsCIRDD.count() == benfordStatsCIRDD.count())
+    val overlapRDD = bootStatsCIRDD.map{ case (idxLevel, depth, stats) => ((idxLevel, depth), stats) }
+      .join(benfordStatsCIRDD.map{ case (idxLevel, depth, stats) => ((idxLevel, depth), stats) })
+
+  }
+  /*stat = mutate(stat,contains=(exact>=lower & exact<=upper))
+  stat = mutate(stat,overlaps=((lower <= tabupper) & (upper >= tablower)))
+  stats[[combs[i]]] = stat
+  if (resultado[[1]] >= 1000) {
+    testreg[[combs[i]]] = sum(rowSums(as.matrix(stat[c('alfa0','alfa1','beta0','beta1'),c('contains','overlaps')]))>0)
+    testpar[[combs[i]]] = sum(rowSums(as.matrix(stat[c('mean','var','kurtosis','skewness'),c('contains','overlaps')]))>0)
+    #if (testpar[[combs[i]]] < 4) {
+      testpar1k[[combs[i]]] = sum(rowSums(as.matrix(stat[c('d1.media','d1.varianc','d1.kurt','d1.skew','d2.media','d2.varianc','d2.kurt','d2.skew'),c('contains','overlaps')]))>0)
+      testpark1kcorr[[combs[i]]] = as.integer(as.matrix(stat[c('corr'),c('contains')]))
+      #}
+  } else {
+    testpar1k[[combs[i]]] = sum(rowSums(as.matrix(stat[c('d1.media','d1.varianc','d1.kurt','d1.skew','d2.media','d2.varianc','d2.kurt','d2.skew'),c('contains','overlaps')]))>0)
+    testpark1kcorr[[combs[i]]] = as.integer(as.matrix(stat[c('corr'),c('contains')]))
+  }*/
 }

@@ -24,7 +24,7 @@ class utilSpec extends PlaySpec {
 
   "calcMoments" must {
     val tolerance = 1e-10
-    val moment = calcMoments(23,0.1)
+    val moment = calcMoments(23,0.1).d1d2
     "return n" in {
       moment.n must be(0.1 +- tolerance)
     }
@@ -47,7 +47,7 @@ class utilSpec extends PlaySpec {
 
   "Moments.normalize" must {
     val tolerance = 1e-10
-    val moment = calcMoments(23,0.1).normalize
+    val moment = calcMoments(23,0.1).d1d2.normalize
     "return n" in {
       moment.n must be(1.0 +- tolerance)
     }
@@ -72,7 +72,7 @@ class utilSpec extends PlaySpec {
     val tolerance = 1e-10
     val moment1 = calcMoments(23,0.1)
     val moment2 = calcMoments(12,0.7)
-    val sum = moment1 + moment2
+    val sum = (moment1 + moment2).d1d2
     "return n" in {
       sum.n must be(0.8 +- tolerance)
     }
@@ -97,24 +97,21 @@ class utilSpec extends PlaySpec {
     val tolerance = 1e-10
     val moment1 = calcMoments(23,0.1)
     val moment2 = calcMoments(12,0.7)
-    val stat = calcStats(moment1 + moment2)
+    val stat = calcStats((moment1 + moment2).d1d2)
     "return n" in {
       stat.n must be(1.0 +- tolerance)
     }
     "calculate mean" in {
-      stat.mean(0) must be(13.375 +- tolerance)
+      stat.mean.head must be(13.375 +- tolerance)
     }
     "calculate variance" in {
-      stat.variance(0) must be(13.234375 +- tolerance)
+      stat.variance.head must be(13.234375 +- tolerance)
     }
     "calculate skewness" in {
-      stat.skewness(0) must be(2.2677868380 +- tolerance)
+      stat.skewness.head must be(2.2677868380 +- tolerance)
     }
     "calculate kurtosis" in {
-      stat.kurtosis(0) must be(3.1428571428 +- tolerance)
-    }
-    "calculate pearson" in {
-      stat.pearson(0) must be(2.5 +- tolerance)
+      stat.kurtosis.head must be(3.1428571428 +- tolerance)
     }
   }
 

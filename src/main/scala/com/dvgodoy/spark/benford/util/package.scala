@@ -57,12 +57,28 @@ package object util {
                     alfa0: Array[CI],
                     alfa1: Array[CI],
                     beta0: Array[CI],
-                    beta1: Array[CI])
+                    beta1: Array[CI]) {
+    def overlaps(that: RegsCI) = {
+      // TO DO
+      // must match alphas in CI
+    }
+    def contains(reference: Regs) = {
+      // TO DO
+    }
+  }
 
   case class StatsCI(mean: Array[CI],
                      variance: Array[CI],
                      skewness: Array[CI],
-                     kurtosis: Array[CI])
+                     kurtosis: Array[CI]) {
+    def overlaps(that: StatsCI) = {
+      // TO DO
+      // must match alphas in CI
+    }
+    def contains(reference: Stats) = {
+      // TO DO
+    }
+  }
 
   case class Regs(n: Double,
                    pearson: ListBuffer[Double],
@@ -140,7 +156,14 @@ package object util {
       x.beta1 ++ y.beta1)
   }
 
-  case class CIDigits(d1d2: StatsCI, d1: StatsCI, d2: StatsCI, r: RegsCI)
+  case class CIDigits(d1d2: StatsCI, d1: StatsCI, d2: StatsCI, r: RegsCI) {
+    def overlaps(that: CIDigits) = {
+      (this.d1d2.overlaps(that.d1d2), this.d1.overlaps(that.d1), this.d2.overlaps(that.d2), this.r.overlaps(that.r))
+    }
+    def contains(exact: StatsDigits) = {
+      (this.d1d2.contains(exact.d1d2), this.d1.contains(exact.d1), this.d2.contains(exact.d2), this.r.contains(exact.r))
+    }
+  }
   case class StatsDigits(d1d2: Stats, d1: Stats, d2: Stats, r: Regs) {
     def + (that: StatsDigits) = addStatsDigits(this, that)
     def calcBcaCI(conf: Array[Double], t0: StatsDigits): CIDigits  = {
@@ -157,7 +180,14 @@ package object util {
     StatsDigits(statsD1D2, statsD1, statsD2, statsR)
   }
 
-  case class CI(alpha: Double, li: Double, ui: Double, lower: Double, upper: Double, t0: Double)
+  case class CI(alpha: Double, li: Double, ui: Double, lower: Double, upper: Double, t0: Double) {
+    def overlaps(that: CI) = {
+      // TO DO
+    }
+    def contains(reference: CI) = {
+      // TO DO
+    }
+  }
   private def bcaCI(conf: Array[Double], t0: Double, tParam: Array[Double]): Array[CI] = {
     val t = tParam.filter(!_.isInfinite)
     val w = Gaussian(0,1).icdf(t.count(_ < t0) / t.length.toDouble)
