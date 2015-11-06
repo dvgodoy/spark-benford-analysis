@@ -1,13 +1,11 @@
 package com.dvgodoy.spark.benford
 
+import breeze.linalg._
+import breeze.numerics._
 import breeze.stats.distributions.Gaussian
+import scala.collection.immutable.Range
 import scala.collection.mutable.ListBuffer
-import scala.math.{pow, floor, sqrt}
 import scala.util.Try
-
-import scala.{specialized=>spec}
-import scala.reflect.ClassTag
-import scala.collection.mutable.ArraySeq
 
 package object util {
   def average[T](xs: Iterable[T])(implicit num: Numeric[T]):Double =
@@ -53,6 +51,10 @@ package object util {
 
   def addMomentsDigits(x: MomentsDigits, y: MomentsDigits) = MomentsDigits(x.d1d2 + y.d1d2, x.d1 + y.d1, x.d2 + y.d2)
 
+  def matchAlphaCIs(ci1: Array[CI], ci2: Array[CI]): Array[(CI, Array[CI])] = {
+    for (ci <- ci1) yield (ci, ci2.filter { case CI(alpha, li, ui, lower, upper, t0) => alpha == ci.alpha })
+  }
+
   case class RegsCI(pearson: Array[CI],
                     alfa0: Array[CI],
                     alfa1: Array[CI],
@@ -62,7 +64,7 @@ package object util {
       // TO DO
       // must match alphas in CI
     }
-    def contains(reference: Regs) = {
+    def contains(exact: RegsCI) = {
       // TO DO
     }
   }
@@ -74,9 +76,12 @@ package object util {
     def overlaps(that: StatsCI) = {
       // TO DO
       // must match alphas in CI
+      val meanMatches = matchAlphaCIs(this.mean, that.mean)
+      meanMatches.map { case (thisMean, thatArray) => assert(thatArray.length == 1); (thisMean.alpha, thisMean.overlaps(thatArray.head)) }
     }
-    def contains(reference: Stats) = {
+    def contains(exact: StatsCI) = {
       // TO DO
+      this.mean(0).contains(exact.mean.head.t0)
     }
   }
 
@@ -160,7 +165,7 @@ package object util {
     def overlaps(that: CIDigits) = {
       (this.d1d2.overlaps(that.d1d2), this.d1.overlaps(that.d1), this.d2.overlaps(that.d2), this.r.overlaps(that.r))
     }
-    def contains(exact: StatsDigits) = {
+    def contains(exact: CIDigits) = {
       (this.d1d2.contains(exact.d1d2), this.d1.contains(exact.d1), this.d2.contains(exact.d2), this.r.contains(exact.r))
     }
   }
@@ -182,13 +187,58 @@ package object util {
 
   case class CI(alpha: Double, li: Double, ui: Double, lower: Double, upper: Double, t0: Double) {
     def overlaps(that: CI) = {
-      // TO DO
+      (this.lower <= that.upper) && (this.upper >= that.lower)
     }
-    def contains(reference: CI) = {
-      // TO DO
+    def contains(exact: Double) = {
+      (exact >= this.lower) && (exact <= this.upper)
     }
   }
-  private def bcaCI(conf: Array[Double], t0: Double, tParam: Array[Double]): Array[CI] = {
+
+  def normInter(tParam: Array[Double], alphaParam: Array[Double]): DenseMatrix[Double] = {
+    val t = DenseVector(tParam.filter(!_.isInfinite))
+    val alpha = DenseVector(alphaParam)
+    val R = t.length.toDouble
+    val rk = alpha :* (R+1)
+    rk(rk :< 1.0) := 1.0
+    rk(rk :> R) := R
+    val k = floor(rk)
+    val inds = DenseVector((1 to alpha.length): _*)
+    val out = DenseVector(Range.Double(1.0, alpha.length + 1.0, 1.0): _*)
+    val kvs = k((k :> 0.0) :& (k :< R)).toDenseVector
+    val tstar = t(argsort(t)).toDenseVector
+    val ints = k :== rk
+    if (any(ints)) out(inds(ints).toArray.map(_ - 1).toSeq) := tstar(k(inds(ints).toArray.map(_ - 1).toSeq).toArray.map(_.toInt - 1).toSeq)
+    out(k :== 0.0) := tstar(0)
+    out(k :== R) := tstar(R.toInt - 1)
+    val temp = inds((ints :^^ BitVector.ones(ints.length)) :& (k :!= 0.0) :& (k :!= R)).toArray.map(_ - 1).toSeq
+    val temp1 = DenseVector(alpha(temp).toArray.map(Gaussian(0,1).icdf(_)))
+    val temp2 = DenseVector((k(temp) :/ (R + 1.0)).toArray.map(Gaussian(0,1).icdf(_)))
+    val temp3 = DenseVector(((k(temp) :+ 1.0) :/ (R + 1.0)).toArray.map(Gaussian(0,1).icdf(_)))
+    val tk = tstar(k(temp).toArray.map(_.toInt - 1).toSeq)
+    val tk1 = tstar(k(temp).toArray.map(_.toInt).toSeq)
+    out(temp) := tk :+ ((temp1 :- temp2) :/ (temp3 :- temp2) :* (tk1 :- tk))
+    DenseMatrix.horzcat(rk.toDenseMatrix.reshape(alphaParam.length/2,2), out.toDenseMatrix.reshape(alphaParam.length/2,2))
+  }
+
+  def bcaCI(conf: Array[Double], t0: Double, tParam: Array[Double]): Array[CI] = {
+    val t = tParam.filter(!_.isInfinite)
+    val w = Gaussian(0,1).icdf(t.count(_ < t0) / t.length.toDouble)
+    assert(!w.isInfinite)
+    val alpha = conf.map(v => (1 - v)/2.0) ++ conf.map(v => (1 + v)/2.0)
+    val zalpha = alpha.map(v => Gaussian(0,1).icdf(v))
+    val tmean = average(t)
+    val tdiff = t.map(_ - tmean)
+    val a = average(tdiff.map(pow(_, 3))) / (6 * pow(average(tdiff.map(pow(_, 2))), 1.5))
+    assert(!a.isInfinite)
+    val adjAlpha = zalpha.map(v => (v, 1 - a * (w + v)))
+      .map { case (v, c) if c > 0 => Gaussian(0,1).cdf(w + (w + v)/c); case (v, c) if c <= 0 => -Inf }
+    val qq = normInter(t, adjAlpha)
+    val resultMatrix = DenseMatrix.horzcat(DenseMatrix(conf).reshape(conf.length,1), qq, DenseMatrix(Array.fill(conf.length)(t0)).t)
+    val result = for (i <- (0 until conf.length)) yield resultMatrix(i,::).t.toArray
+    result.map { case Array(alpha, li, ui, lower, upper, t0) => CI(alpha, li, ui, lower, upper, t0) }.toArray
+  }
+
+  /*private def bcaCI(conf: Array[Double], t0: Double, tParam: Array[Double]): Array[CI] = {
     val t = tParam.filter(!_.isInfinite)
     val w = Gaussian(0,1).icdf(t.count(_ < t0) / t.length.toDouble)
     assert(!w.isInfinite)
@@ -229,7 +279,7 @@ package object util {
     (rk.zipWithIndex.map { case (rk, idx) => (idx % (alpha.length / 2), rk) } ++
       out.zipWithIndex.map { case (out, idx) => (idx % (alpha.length / 2), if (temp.contains(idx + 1)) temp5(temp.indexWhere(_ == idx + 1)) else out) })
       .groupBy(_._1).toArray.sortBy(_._1).map { case (m, values) => values.map(_._2) }
-  }
+  }*/
 
   private def time[A](a: => A, n:Int) = {
     var times = List[Long]()
@@ -243,7 +293,12 @@ package object util {
     result
   }
 
-  class RVector[@spec(Double, Int, Float, Long) V](val data: ArraySeq[V], val length: Int) extends scala.AnyRef with Serializable {
+  /*
+  import scala.{specialized=>spec}
+  import scala.reflect.ClassTag
+  import scala.collection.mutable.ArraySeq
+
+    class RVector[@spec(Double, Int, Float, Long) V](val data: ArraySeq[V], val length: Int) extends scala.AnyRef with Serializable {
     def this(data: ArraySeq[V]) = this(data, data.length)
     def this(data: List[V]) = this(ArraySeq(data: _*), data.length)
     def this(data: Vector[V]) = this(ArraySeq(data: _*), data.length)
@@ -271,5 +326,5 @@ package object util {
     def apply[@spec(Double, Int, Float,Long) V](data: Array[V]) = new RVector(data)
     def apply[@spec(Double, Int, Float,Long) V](data: V*)(implicit man: ClassTag[V]) = new RVector(Array(data: _*))
     def apply(data: Range) = new RVector(data.toArray)
-  }
+  }*/
 }

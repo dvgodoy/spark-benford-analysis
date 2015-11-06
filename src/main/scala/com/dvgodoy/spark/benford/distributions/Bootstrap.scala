@@ -14,8 +14,8 @@ object Bootstrap {
     (rand.randInt(nOutcomes).get(),rand.uniform.get())
   }
 
-  private case class AliasTable(modProb: DenseVector[Double], aliases: DenseVector[Int], nOutcomes: Int)
-  private def buildAliasTable(prob: Array[Double]): AliasTable = {
+  case class AliasTable(modProb: DenseVector[Double], aliases: DenseVector[Int], nOutcomes: Int)
+  def buildAliasTable(prob: Array[Double]): AliasTable = {
     val nOutcomes = prob.length
     assert(nOutcomes == 90)
     val aliases = DenseVector.zeros[Int](nOutcomes)
@@ -183,12 +183,13 @@ object Bootstrap {
   def calcOverlaps(bootStatsCIRDD: RDD[StatsCIByLevel], benfordStatsCIRDD: RDD[StatsCIByLevel]) = {
     //BenfordStatsDigits
     assert(bootStatsCIRDD.count() == benfordStatsCIRDD.count())
-    val overlapRDD = bootStatsCIRDD.map{ case (idxLevel, depth, stats) => ((idxLevel, depth), stats) }
-      .join(benfordStatsCIRDD.map{ case (idxLevel, depth, stats) => ((idxLevel, depth), stats) })
+    val overlapRDD = bootStatsCIRDD.map{ case StatsCIByLevel(idxLevel, depth, stats) => ((idxLevel, depth), stats) }
+      .join(benfordStatsCIRDD.map{ case StatsCIByLevel(idxLevel, depth, stats) => ((idxLevel, depth), stats) })
 
   }
   /*stat = mutate(stat,contains=(exact>=lower & exact<=upper))
-  stat = mutate(stat,overlaps=((lower <= tabupper) & (upper >= tablower)))
+  stat = mutate(stat,overlaps=((lower <= tabupper) & (upper >= tablower)))*/
+  /*
   stats[[combs[i]]] = stat
   if (resultado[[1]] >= 1000) {
     testreg[[combs[i]]] = sum(rowSums(as.matrix(stat[c('alfa0','alfa1','beta0','beta1'),c('contains','overlaps')]))>0)
