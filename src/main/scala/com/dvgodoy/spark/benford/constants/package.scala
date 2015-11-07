@@ -17,5 +17,5 @@ package object constants {
   val BenfordStatsD1 = BenfordStats.d1
   val BenfordStatsD2 = BenfordStats.d2
   val BenfordStatsR = calcRegs(BenfordMomentsD1D2, BenfordMomentsD1, BenfordMomentsD2)
-  val BenfordStatsDigits = StatsDigits (BenfordStatsD1D2, BenfordStatsD1, BenfordStatsD2, BenfordStatsR)
+  val BenfordStatsDigits = StatsDigits(BenfordStatsD1D2, BenfordStatsD1, BenfordStatsD2, BenfordStatsR)
 }

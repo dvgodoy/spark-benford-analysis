@@ -55,34 +55,59 @@ package object util {
     for (ci <- ci1) yield (ci, ci2.filter { case CI(alpha, li, ui, lower, upper, t0) => alpha == ci.alpha })
   }
 
+  case class Overlap(alpha: Double, overlaps: Boolean)
+  case class Contain(alpha: Double, contains: Boolean)
+  case class StatsOverlap(mean: Array[Overlap], variance: Array[Overlap], skewness: Array[Overlap], kurtosis: Array[Overlap])
+  case class StatsContain(mean: Array[Contain], variance: Array[Contain], skewness: Array[Contain], kurtosis: Array[Contain])
+  case class RegsOverlap(pearson: Array[Overlap], alfa0: Array[Overlap], alfa1: Array[Overlap], beta0: Array[Overlap], beta1: Array[Overlap])
+  case class RegsContain(pearson: Array[Contain], alfa0: Array[Contain], alfa1: Array[Contain], beta0: Array[Contain], beta1: Array[Contain])
+
   case class RegsCI(pearson: Array[CI],
                     alfa0: Array[CI],
                     alfa1: Array[CI],
                     beta0: Array[CI],
                     beta1: Array[CI]) {
-    def overlaps(that: RegsCI) = {
-      // TO DO
-      // must match alphas in CI
-    }
-    def contains(exact: RegsCI) = {
-      // TO DO
-    }
+    def overlaps(that: RegsCI) = RegsOverlap(
+      matchAlphaCIs(this.pearson, that.pearson)
+        .map { case (thisStat, thatArray) => assert(thatArray.length == 1); Overlap(thisStat.alpha, thisStat.overlaps(thatArray.head)) },
+      matchAlphaCIs(this.alfa0, that.alfa0)
+        .map { case (thisStat, thatArray) => assert(thatArray.length == 1); Overlap(thisStat.alpha, thisStat.overlaps(thatArray.head)) },
+      matchAlphaCIs(this.alfa1, that.alfa1)
+        .map { case (thisStat, thatArray) => assert(thatArray.length == 1); Overlap(thisStat.alpha, thisStat.overlaps(thatArray.head)) },
+      matchAlphaCIs(this.beta0, that.beta0)
+        .map { case (thisStat, thatArray) => assert(thatArray.length == 1); Overlap(thisStat.alpha, thisStat.overlaps(thatArray.head)) },
+      matchAlphaCIs(this.beta1, that.beta1)
+        .map { case (thisStat, thatArray) => assert(thatArray.length == 1); Overlap(thisStat.alpha, thisStat.overlaps(thatArray.head)) }
+    )
+    def contains(exact: Regs) = RegsContain(
+      this.pearson.map { case ci => Contain(ci.alpha, ci.contains(exact.pearson.head)) },
+      this.alfa0.map { case ci => Contain(ci.alpha, ci.contains(exact.alfa0.head)) },
+      this.alfa1.map { case ci => Contain(ci.alpha, ci.contains(exact.alfa1.head)) },
+      this.beta0.map { case ci => Contain(ci.alpha, ci.contains(exact.beta0.head)) },
+      this.beta1.map { case ci => Contain(ci.alpha, ci.contains(exact.beta1.head)) }
+    )
   }
 
   case class StatsCI(mean: Array[CI],
                      variance: Array[CI],
                      skewness: Array[CI],
                      kurtosis: Array[CI]) {
-    def overlaps(that: StatsCI) = {
-      // TO DO
-      // must match alphas in CI
-      val meanMatches = matchAlphaCIs(this.mean, that.mean)
-      meanMatches.map { case (thisMean, thatArray) => assert(thatArray.length == 1); (thisMean.alpha, thisMean.overlaps(thatArray.head)) }
-    }
-    def contains(exact: StatsCI) = {
-      // TO DO
-      this.mean(0).contains(exact.mean.head.t0)
-    }
+    def overlaps(that: StatsCI) = StatsOverlap(
+      matchAlphaCIs(this.mean, that.mean)
+        .map { case (thisStat, thatArray) => assert(thatArray.length == 1); Overlap(thisStat.alpha, thisStat.overlaps(thatArray.head)) },
+      matchAlphaCIs(this.variance, that.variance)
+        .map { case (thisStat, thatArray) => assert(thatArray.length == 1); Overlap(thisStat.alpha, thisStat.overlaps(thatArray.head)) },
+      matchAlphaCIs(this.skewness, that.skewness)
+        .map { case (thisStat, thatArray) => assert(thatArray.length == 1); Overlap(thisStat.alpha, thisStat.overlaps(thatArray.head)) },
+      matchAlphaCIs(this.kurtosis, that.kurtosis)
+        .map { case (thisStat, thatArray) => assert(thatArray.length == 1); Overlap(thisStat.alpha, thisStat.overlaps(thatArray.head)) }
+      )
+    def contains(exact: Stats) = StatsContain(
+      this.mean.map { case ci => Contain(ci.alpha, ci.contains(exact.mean.head)) },
+      this.variance.map { case ci => Contain(ci.alpha, ci.contains(exact.variance.head)) },
+      this.skewness.map { case ci => Contain(ci.alpha, ci.contains(exact.skewness.head)) },
+      this.kurtosis.map { case ci => Contain(ci.alpha, ci.contains(exact.kurtosis.head)) }
+    )
   }
 
   case class Regs(n: Double,
@@ -161,14 +186,18 @@ package object util {
       x.beta1 ++ y.beta1)
   }
 
+  case class OverlapDigits(d1d2: StatsOverlap, d1: StatsOverlap, d2: StatsOverlap, r: RegsOverlap)
+  case class ContainDigits(d1d2: StatsContain, d1: StatsContain, d2: StatsContain, r: RegsContain)
+
   case class CIDigits(d1d2: StatsCI, d1: StatsCI, d2: StatsCI, r: RegsCI) {
     def overlaps(that: CIDigits) = {
-      (this.d1d2.overlaps(that.d1d2), this.d1.overlaps(that.d1), this.d2.overlaps(that.d2), this.r.overlaps(that.r))
+      OverlapDigits(this.d1d2.overlaps(that.d1d2), this.d1.overlaps(that.d1), this.d2.overlaps(that.d2), this.r.overlaps(that.r))
     }
-    def contains(exact: CIDigits) = {
-      (this.d1d2.contains(exact.d1d2), this.d1.contains(exact.d1), this.d2.contains(exact.d2), this.r.contains(exact.r))
+    def contains(exact: StatsDigits) = {
+      ContainDigits(this.d1d2.contains(exact.d1d2), this.d1.contains(exact.d1), this.d2.contains(exact.d2), this.r.contains(exact.r))
     }
   }
+
   case class StatsDigits(d1d2: Stats, d1: Stats, d2: Stats, r: Regs) {
     def + (that: StatsDigits) = addStatsDigits(this, that)
     def calcBcaCI(conf: Array[Double], t0: StatsDigits): CIDigits  = {

@@ -3,6 +3,7 @@ package com.dvgodoy.spark.benford.distributions
 import breeze.linalg.DenseVector
 import breeze.stats.distributions.RandBasis
 import com.dvgodoy.spark.benford.util._
+import com.dvgodoy.spark.benford.constants._
 import org.apache.commons.math3.random.MersenneTwister
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
@@ -180,15 +181,14 @@ object Bootstrap {
     (aliasMap, freqLevelsRDD)
   }
 
+  case class OverlapsByLevel(idxLevel: Long, depth: Int, overlap: OverlapDigits, contain: ContainDigits)
   def calcOverlaps(bootStatsCIRDD: RDD[StatsCIByLevel], benfordStatsCIRDD: RDD[StatsCIByLevel]) = {
-    //BenfordStatsDigits
     assert(bootStatsCIRDD.count() == benfordStatsCIRDD.count())
     val overlapRDD = bootStatsCIRDD.map{ case StatsCIByLevel(idxLevel, depth, stats) => ((idxLevel, depth), stats) }
       .join(benfordStatsCIRDD.map{ case StatsCIByLevel(idxLevel, depth, stats) => ((idxLevel, depth), stats) })
+      .map{ case ((idxLevel, depth), (boot, benford)) => OverlapsByLevel(idxLevel, depth, boot.overlaps(benford), boot.contains(BenfordStatsDigits)) }
 
   }
-  /*stat = mutate(stat,contains=(exact>=lower & exact<=upper))
-  stat = mutate(stat,overlaps=((lower <= tabupper) & (upper >= tablower)))*/
   /*
   stats[[combs[i]]] = stat
   if (resultado[[1]] >= 1000) {
