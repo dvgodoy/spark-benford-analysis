@@ -17,6 +17,8 @@ libraryDependencies += "org.apache.spark" %% "spark-core" % "1.4.1" % "provided"
 
 libraryDependencies  ++= Seq(
   // other dependencies here
+  "org.json4s" %% "json4s-native" % "3.2.10",
+  "org.json4s" %% "json4s-jackson" % "3.2.10",
   "org.scalatest" %% "scalatest" % "2.2.1" % "test",
   "org.scalatestplus" %% "play" % "1.4.0-M3" % "test",
   "org.scalanlp" %% "breeze" % "0.11.2",

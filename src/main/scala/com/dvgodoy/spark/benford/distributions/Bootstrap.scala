@@ -7,6 +7,7 @@ import com.dvgodoy.spark.benford.constants._
 import org.apache.commons.math3.random.MersenneTwister
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.json4s.JsonDSL._
 import scala.collection.mutable
 
 object Bootstrap {
@@ -43,9 +44,8 @@ object Bootstrap {
 
   private def findOutcome(aliasTable: AliasTable, rollToss: (Int, Double)): Int = if (rollToss._2 < aliasTable.modProb(rollToss._1)) rollToss._1 + 10 else aliasTable.aliases(rollToss._1) + 10
 
-  def generateBootstrapTable(sc: SparkContext, prob: Array[Double], sampleSize: Int, numSamples: Int): RDD[(Long, (Int, (Int, Double)))] = {
-    val nOutcomes = prob.length
-    assert(nOutcomes == 90)
+  def generateBootstrapTable(sc: SparkContext, sampleSize: Int, numSamples: Int): RDD[(Long, (Int, (Int, Double)))] = {
+    val nOutcomes = 90
     sc.parallelize(1 to numSamples).mapPartitionsWithIndex { (idx, iter) =>
       val rand = new RandBasis(new MersenneTwister(idx + 42))
       iter.flatMap(sample => Array.fill(sampleSize)(rollToss(nOutcomes, rand)).zipWithIndex
@@ -85,6 +85,12 @@ object Bootstrap {
     def contains(exact: StatsDigits) = {
       this.CIs.contains(exact)
     }
+    def toJson(name: String) =
+      (name ->
+        ("idxLevel" -> idxLevel) ~
+        ("depth" -> depth) ~
+        CIs.toJson("CIs")
+      )
   }
   def calcStatsCIs(dataStatsRDD: RDD[((Long, Int), StatsDigits)], groupStatsRDD: RDD[((Long, Int), StatsDigits)], conf: Array[Double]): RDD[StatsCIByLevel] = {
     groupStatsRDD.join(dataStatsRDD)
@@ -99,7 +105,7 @@ object Bootstrap {
   }
 
   def calcBootStats(sc: SparkContext, dataRDD: RDD[((Long, Double, Int), Array[String])], numSamples: Int, conf: Array[Double]): (Array[((String, Int), Long)], RDD[StatsCIByLevel]) = {
-    val (uniqLevels, levelsRDD) = findLevels(dataRDD)
+    val (uniqLevels, pointers, levelsRDD) = findLevels(dataRDD)
     val dataStatsRDD = calcDataStats(levelsRDD)
     val (aliasMap, freqRDD) = calcFrequenciesLevels(levelsRDD)
 
@@ -107,7 +113,7 @@ object Bootstrap {
     val level0 = freqRDD.filter { case FreqByLevel(idxLevel, freq) => freq.count == sampleSize }.collect()(0)
     val prob = level0.freq.freqD1D2
 
-    val bootTableRDD = generateBootstrapTable(sc, prob, sampleSize, numSamples)
+    val bootTableRDD = generateBootstrapTable(sc, sampleSize, numSamples)
     val bootRDD = generateBootstrapOutcomes(bootTableRDD, levelsRDD, aliasMap)
     val momentsRDD = calcMomentsSamples(bootRDD)
     val statsRDD = calcStatsSamples(momentsRDD)
@@ -155,16 +161,24 @@ object Bootstrap {
   }
 
   case class Level(idxLevel: Long, depth: Int, idx: Long, value: Double, d1d2: Int)
-  def findLevels(dataLevelRDD: RDD[((Long, Double, Int), Array[String])]): (Array[((String, Int), Long)], RDD[Level]) = {
-    val levelsRDD = dataLevelRDD
+  def findLevels(dataLevelRDD: RDD[((Long, Double, Int), Array[String])]): (Array[((String, Int), Long)], Map[Long,Array[Long]], RDD[Level]) = {
+    val concatRDD = dataLevelRDD
       .map { case (value, levels) => (value, levels
                                   .zipWithIndex
                                   .map { case (nextLevels, idx) => (levels.slice(0, idx + 1).foldLeft("L")(_ + "." + _), idx) } ) }
-      .flatMap { case (value, levels) => levels.map { case (name, depth) => ((name, depth), value) } }
+    val levelsRDD = concatRDD.flatMap { case (value, levels) => levels.map { case (name, depth) => ((name, depth), value) } }
 
     val uniqLevelsRDD = levelsRDD.map { case (classif, value) => classif }.distinct().sortBy(identity).zipWithIndex()
+    val uniqLevels = uniqLevelsRDD.collect()
 
-    (uniqLevelsRDD.collect(),
+    val hierarchies = concatRDD.map { case (value, levels) => levels.map(_._1).toList }.distinct().collect()
+    val idxHierarchies = hierarchies
+      .map(levels => levels.flatMap(hierarchy => uniqLevels
+                                  .filter{case ((level, depth), idxLevel) => level == hierarchy}.map{case ((level, depth), idxLevel) => idxLevel }))
+    val pointers = idxHierarchies.flatMap(levels => levels.zipWithIndex.map{case (top, idx) => (top, if (idx < (levels.length - 1)) levels(idx + 1) else -1)})
+      .distinct.groupBy(_._1).map{case (top, below) => (top, below.map(_._2))}
+
+    (uniqLevels, pointers,
       uniqLevelsRDD.join(levelsRDD).map { case ((name, depth), (idxLevel, (idx, value, d1d2))) => Level(idxLevel, depth, idx, value, d1d2) })
   }
 
@@ -181,25 +195,16 @@ object Bootstrap {
     (aliasMap, freqLevelsRDD)
   }
 
-  case class OverlapsByLevel(idxLevel: Long, depth: Int, overlap: OverlapDigits, contain: ContainDigits)
-  def calcOverlaps(bootStatsCIRDD: RDD[StatsCIByLevel], benfordStatsCIRDD: RDD[StatsCIByLevel]) = {
+  def calcOverlaps(bootStatsCIRDD: RDD[StatsCIByLevel], benfordStatsCIRDD: RDD[StatsCIByLevel]): RDD[OverlapsByLevel] = {
     assert(bootStatsCIRDD.count() == benfordStatsCIRDD.count())
     val overlapRDD = bootStatsCIRDD.map{ case StatsCIByLevel(idxLevel, depth, stats) => ((idxLevel, depth), stats) }
       .join(benfordStatsCIRDD.map{ case StatsCIByLevel(idxLevel, depth, stats) => ((idxLevel, depth), stats) })
       .map{ case ((idxLevel, depth), (boot, benford)) => OverlapsByLevel(idxLevel, depth, boot.overlaps(benford), boot.contains(BenfordStatsDigits)) }
-
+    overlapRDD
   }
-  /*
-  stats[[combs[i]]] = stat
-  if (resultado[[1]] >= 1000) {
-    testreg[[combs[i]]] = sum(rowSums(as.matrix(stat[c('alfa0','alfa1','beta0','beta1'),c('contains','overlaps')]))>0)
-    testpar[[combs[i]]] = sum(rowSums(as.matrix(stat[c('mean','var','kurtosis','skewness'),c('contains','overlaps')]))>0)
-    #if (testpar[[combs[i]]] < 4) {
-      testpar1k[[combs[i]]] = sum(rowSums(as.matrix(stat[c('d1.media','d1.varianc','d1.kurt','d1.skew','d2.media','d2.varianc','d2.kurt','d2.skew'),c('contains','overlaps')]))>0)
-      testpark1kcorr[[combs[i]]] = as.integer(as.matrix(stat[c('corr'),c('contains')]))
-      #}
-  } else {
-    testpar1k[[combs[i]]] = sum(rowSums(as.matrix(stat[c('d1.media','d1.varianc','d1.kurt','d1.skew','d2.media','d2.varianc','d2.kurt','d2.skew'),c('contains','overlaps')]))>0)
-    testpark1kcorr[[combs[i]]] = as.integer(as.matrix(stat[c('corr'),c('contains')]))
-  }*/
+
+  def calcResults(overlapRDD: RDD[OverlapsByLevel]): RDD[ResultsByLevel] = {
+    overlapRDD.map { case obl => obl.calcResults }
+  }
+
 }

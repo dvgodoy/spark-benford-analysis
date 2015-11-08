@@ -9,16 +9,16 @@ class Benford {
   def statsBenford(sc: SparkContext, dataRDD: RDD[((Long, Double, Int), Array[String])], numSamples: Int, conf: Array[Double]): (Array[((String, Int), Long)], RDD[StatsCIByLevel]) = {
     val sampleSize = dataRDD.count().toInt
 
-    val (uniqLevels, levelsRDD) = findLevels(dataRDD)
+    val (uniqLevels, pointers, levelsRDD) = findLevels(dataRDD)
     val dataStatsRDD = calcDataStats(levelsRDD)
-    val (aliasMap, freqRDD) = calcFrequenciesLevels(levelsRDD)
+    val (tmp, freqRDD) = calcFrequenciesLevels(levelsRDD)
+    val aliasMap = freqRDD.map { case FreqByLevel(idxLevel, freq) => (idxLevel, buildAliasTable(BenfordProbabilitiesD1D2)) }.collect().toMap
 
-    val bootTableRDD = generateBootstrapTable(sc, BenfordProbabilitiesD1D2, sampleSize, numSamples)
+    val bootTableRDD = generateBootstrapTable(sc, sampleSize, numSamples)
     val bootRDD = generateBootstrapOutcomes(bootTableRDD, levelsRDD, aliasMap)
     val momentsRDD = calcMomentsSamples(bootRDD)
     val statsRDD = calcStatsSamples(momentsRDD)
     val groupStatsRDD = groupStats(statsRDD)
     (uniqLevels, calcStatsCIs(dataStatsRDD, groupStatsRDD, conf))
-
   }
 }
