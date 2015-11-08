@@ -129,7 +129,21 @@ object Bootstrap {
     statsCIRDD.filter { case StatsCIByLevel(idxLevel, depth, stats) => depth == level }
   }
 
-  case class Frequencies(count: Int, freqD1D2: Array[Double], freqD1: Array[Double], freqD2: Array[Double])
+  case class Frequencies(count: Int, freqD1D2: Array[Double], freqD1: Array[Double], freqD2: Array[Double]) {
+    def toJson(name: String) =
+      (name ->
+        ("count" -> count) ~
+        ("d1d2" ->
+          freqD1D2.zipWithIndex.toList.map{ case (freq, idx) =>
+            (((idx + 10).toString -> freq ))}) ~
+        ("d1" ->
+          freqD1.zipWithIndex.toList.map{ case (freq, idx) =>
+            (((idx + 1).toString -> freq ))}) ~
+          ("d2" ->
+            freqD2.zipWithIndex.toList.map{ case (freq, idx) =>
+              (((idx + 1).toString -> freq ))})
+      )
+  }
   def calcFrequencies(digitsCounts: List[(Int, Int)]): Frequencies = {
     val digitsTotal = digitsCounts.map { case (d1d2, count) => count }.sum
     val countsD1D2 = digitsCounts ::: (10 to 99).toSet.diff(digitsCounts.map(_._1).toSet).toList.map(n => (n, 0))

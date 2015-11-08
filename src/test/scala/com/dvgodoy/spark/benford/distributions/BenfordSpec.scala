@@ -6,9 +6,6 @@ import play.api.test._
 import play.api.test.Helpers._
 import org.scalatestplus.play._
 
-/**
- * Created by dvgodoy on 31/10/15.
- */
 class BenfordSpec extends PlaySpec with OneAppPerSuite {
   // Override app if you need a FakeApplication with other than
   // default parameters.

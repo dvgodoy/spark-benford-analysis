@@ -2,9 +2,6 @@ package com.dvgodoy.spark.benford.util
 
 import org.scalatestplus.play.PlaySpec
 
-/**
- * Created by dvgodoy on 31/10/15.
- */
 class utilSpec extends PlaySpec {
   "findD1D2" must {
     "work with numbers below 1.0" in {
