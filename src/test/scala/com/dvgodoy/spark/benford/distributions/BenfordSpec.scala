@@ -1,9 +1,5 @@
 package com.dvgodoy.spark.benford.distributions
 
-import org.scalatest._
-import play.api.Play
-import play.api.test._
-import play.api.test.Helpers._
 import org.scalatestplus.play._
 
 class BenfordSpec extends PlaySpec with OneAppPerSuite {

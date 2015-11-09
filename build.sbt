@@ -36,6 +36,10 @@ libraryDependencies  ++= Seq(
   "org.scalanlp" %% "breeze-viz" % "0.11.2"
 )
 
+dependencyOverrides ++= Set(
+  "com.fasterxml.jackson.core" % "jackson-databind" % "2.4.4"
+)
+
 resolvers += "Akka Repository" at "http://repo.akka.io/releases"
 
 resolvers += "Maven" at "http://repo1.maven.org/maven2"
