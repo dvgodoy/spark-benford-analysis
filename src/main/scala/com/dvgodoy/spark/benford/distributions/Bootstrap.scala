@@ -186,13 +186,13 @@ class Bootstrap extends Serializable {
   def showCIsByGroupId(statsCIRDD: RDD[StatsCIByLevel], groupId: Int): String = {
     val CIsRDD = statsCIRDD.filter { case StatsCIByLevel(idxLevel, depth, stats) => idxLevel == groupId }
     val CIs = CIsRDD.collect()
-    compact(render(CIs(0).toJson("groupId_" + groupId.toString)))
+    compact(render(CIs(0).toJson("group")))
   }
 
   def showCIsByLevel(statsCIRDD: RDD[StatsCIByLevel], level: Int): Array[String] = {
     val CIsRDD = statsCIRDD.filter { case StatsCIByLevel(idxLevel, depth, stats) => depth == level }
     val CIs = CIsRDD.collect()
-    for (ci <- CIs) yield compact(render(ci.toJson("groupId_" + ci.idxLevel.toString)))
+    for (ci <- CIs) yield compact(render(ci.toJson("group")))
   }
 
   def calcResults(bootSampleRDD: RDD[StatsCIByLevel], bootBenfordRDD: RDD[StatsCIByLevel]): RDD[ResultsByLevel] = {
@@ -203,13 +203,13 @@ class Bootstrap extends Serializable {
   def showResultsByGroupId(resultsRDD: RDD[ResultsByLevel], groupId: Int): String = {
     val resRDD = resultsRDD.filter { case ResultsByLevel(idxLevel, depth, results) => idxLevel == groupId }
     val res = resRDD.collect()
-    compact(render(res(0).toJson("groupId_" + groupId.toString)))
+    compact(render(res(0).toJson("group")))
   }
 
   def showResultsByLevel(resultsRDD: RDD[ResultsByLevel], level: Int): Array[String] = {
     val resRDD = resultsRDD.filter { case ResultsByLevel(idxLevel, depth, results) => depth == level }
     val res = resRDD.collect()
-    for (r <- res) yield compact(render(r.toJson("groupId_" + r.idxLevel.toString)))
+    for (r <- res) yield compact(render(r.toJson("group")))
   }
 }
 

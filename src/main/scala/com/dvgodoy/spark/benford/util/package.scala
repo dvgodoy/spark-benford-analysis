@@ -220,12 +220,12 @@ package object util {
     def contains(exact: Double) = (exact >= this.lower) && (exact <= this.upper)
     def toJson =
       (
-        ("alpha" -> alpha) ~
-          ("li" -> li) ~
-          ("ui" -> ui) ~
-          ("lower" -> lower) ~
-          ("upper" -> upper) ~
-          ("t0" -> t0)
+        ("alpha" -> "%.10f".format(alpha).toDouble) ~
+          ("li" -> "%.10f".format(li).toDouble) ~
+          ("ui" -> "%.10f".format(ui).toDouble) ~
+          ("lower" -> "%.10f".format(lower).toDouble) ~
+          ("upper" -> "%.10f".format(upper).toDouble) ~
+          ("t0" -> "%.10f".format(t0).toDouble)
         )
   }
 
@@ -376,8 +376,8 @@ package object util {
   protected[benford] case class ResultsByLevel(idxLevel: Long, depth: Int, results: Results) {
     def toJson(name: String) =
       (name ->
-        ("idxLevel" -> idxLevel) ~
-          ("depth" -> depth) ~
+        ("id" -> idxLevel) ~
+          ("level" -> depth) ~
           results.toJson("results")
         )
   }
@@ -425,8 +425,8 @@ package object util {
     }
     def toJson(name: String) =
       (name ->
-        ("idxLevel" -> idxLevel) ~
-          ("depth" -> depth) ~
+        ("id" -> idxLevel) ~
+          ("level" -> depth) ~
           CIs.toJson("CIs")
         )
   }
