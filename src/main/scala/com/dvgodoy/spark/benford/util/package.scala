@@ -3,6 +3,7 @@ package com.dvgodoy.spark.benford
 import breeze.linalg._
 import breeze.numerics._
 import breeze.stats.distributions.Gaussian
+import org.apache.spark.rdd.RDD
 import org.json4s.JsonDSL._
 import scala.collection.immutable.Range
 import scala.collection.mutable.ListBuffer
@@ -106,13 +107,17 @@ package object util {
   protected case class Results(stats: Boolean, d1d2: StatsOC, d1: StatsOC, d2: StatsOC, regs: Boolean, r: RegsOC) {
     def toJson(name: String) =
       (name ->
-        ("stats" -> stats) ~
+        ("diagnostics" ->
+          ("stats" -> stats) ~
+          ("regs" -> regs)
+        ) ~
+        ("details" ->
           d1d2.toJson("d1d2") ~
           d1.toJson("d1") ~
           d2.toJson("d2") ~
-          ("regs" -> regs) ~
           r.toJson("r")
         )
+      )
   }
 
   protected case class RegsOC(pearsonOC: OverlapContain, alpha0: OverlapContain, alpha1: OverlapContain, beta0: OverlapContain, beta1: OverlapContain) {
@@ -405,13 +410,13 @@ package object util {
         ("count" -> count) ~
           ("d1d2" ->
             freqD1D2.zipWithIndex.toList.map{ case (freq, idx) =>
-              (((idx + 10).toString -> freq ))}) ~
+              (((idx + 10).toString -> "%.10f".format(freq).toDouble))}) ~
           ("d1" ->
             freqD1.zipWithIndex.toList.map{ case (freq, idx) =>
-              (((idx + 1).toString -> freq ))}) ~
+              (((idx + 1).toString -> "%.10f".format(freq).toDouble))}) ~
           ("d2" ->
             freqD2.zipWithIndex.toList.map{ case (freq, idx) =>
-              (((idx + 1).toString -> freq ))})
+              (((idx + 1).toString -> "%.10f".format(freq).toDouble))})
         )
   }
 
@@ -430,6 +435,10 @@ package object util {
           CIs.toJson("CIs")
         )
   }
+
+  protected[benford] case class Level(idxLevel: Long, depth: Int, idx: Long, value: Double, d1d2: Int)
+  protected[benford] case class FreqByLevel(idxLevel: Long, freq: Frequencies)
+  protected[benford] case class DataByLevel(levels: Array[((String, Int), Long)], hierarchy: Map[Long,Array[Long]], freqByLevel: Array[FreqByLevel] ,dataByLevelsRDD: RDD[Level])
 
   protected[benford] def average[T](xs: Iterable[T])(implicit num: Numeric[T]):Double =
     num.toDouble(xs.sum) / xs.size

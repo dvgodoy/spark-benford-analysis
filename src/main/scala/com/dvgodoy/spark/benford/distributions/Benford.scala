@@ -1,26 +1,22 @@
 package com.dvgodoy.spark.benford.distributions
 
 import com.dvgodoy.spark.benford.constants._
-import com.dvgodoy.spark.benford.util.StatsCIByLevel
+import com.dvgodoy.spark.benford.util.{FreqByLevel, StatsCIByLevel, DataByLevel}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 
 class Benford extends Bootstrap {
-  def calcBenfordCIs(sc: SparkContext, dataRDD: RDD[((Long, Double, Int), Array[String])], numSamples: Int = 25000): (Array[((String, Int), Long)], Map[Long,Array[Long]], RDD[StatsCIByLevel]) = {
-    val (uniqLevels, pointers, levelsRDD) = findLevels(dataRDD)
-    val dataStatsRDD = calcDataStats(levelsRDD)
-    val (tmp, freqRDD) = calcFrequenciesLevels(levelsRDD)
-    val aliasMap = freqRDD.map { case FreqByLevel(idxLevel, freq) => (idxLevel, buildAliasTable(BenfordProbabilitiesD1D2)) }.collect().toMap
-
-    val freq = freqRDD.filter{ case FreqByLevel(idxLevel, frequency) => idxLevel == 0}.collect()
-    val sampleSize = freq(0).freq.count
+  def calcBenfordCIs(sc: SparkContext, data: DataByLevel, numSamples: Int = 25000): RDD[StatsCIByLevel] = {
+    val dataStatsRDD = calcDataStats(data.dataByLevelsRDD)
+    val aliasMap = data.freqByLevel.map { case FreqByLevel(idxLevel, freq) => (idxLevel, buildAliasTable(BenfordProbabilitiesD1D2)) }.toMap
+    val sampleSize = data.freqByLevel.filter { case FreqByLevel(idxLevel, freq) => idxLevel == 0 }(0).freq.count
 
     val bootTableRDD = generateBootstrapTable(sc, sampleSize, numSamples)
-    val bootRDD = generateBootstrapOutcomes(bootTableRDD, levelsRDD, aliasMap)
+    val bootRDD = generateBootstrapOutcomes(bootTableRDD, data.dataByLevelsRDD, aliasMap)
     val momentsRDD = calcMomentsSamples(bootRDD)
     val statsRDD = calcStatsSamples(momentsRDD)
     val groupStatsRDD = groupStats(statsRDD)
-    (uniqLevels, pointers, calcStatsCIs(dataStatsRDD, groupStatsRDD, Array(0.975, 0.99)))
+    calcStatsCIs(dataStatsRDD, groupStatsRDD, Array(0.975, 0.99))
   }
 }
 

@@ -9,7 +9,6 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods._
-
 import scala.collection.mutable
 
 class Bootstrap extends Serializable {
@@ -119,8 +118,7 @@ class Bootstrap extends Serializable {
     groupStats(statsOriginalRDD)
   }
 
-  protected case class Level(idxLevel: Long, depth: Int, idx: Long, value: Double, d1d2: Int)
-  protected def findLevels(dataLevelRDD: RDD[((Long, Double, Int), Array[String])]): (Array[((String, Int), Long)], Map[Long,Array[Long]], RDD[Level]) = {
+  protected def findLevels(dataLevelRDD: RDD[((Long, Double, Int), Array[String])]): DataByLevel = {
     val concatRDD = dataLevelRDD
       .map { case (value, levels) => (value, levels
                                   .zipWithIndex
@@ -137,25 +135,25 @@ class Bootstrap extends Serializable {
     val pointers = idxHierarchies.flatMap(levels => levels.zipWithIndex.map{case (top, idx) => (top, if (idx < (levels.length - 1)) levels(idx + 1) else -1)})
       .distinct.groupBy(_._1).map{case (top, below) => (top, below.map(_._2))}
 
-    (uniqLevels, pointers,
-      uniqLevelsRDD.join(levelsRDD).map { case ((name, depth), (idxLevel, (idx, value, d1d2))) => Level(idxLevel, depth, idx, value, d1d2) })
+    val dataByLevelsRDD = uniqLevelsRDD.join(levelsRDD).map { case ((name, depth), (idxLevel, (idx, value, d1d2))) => Level(idxLevel, depth, idx, value, d1d2) }
+    val freqByLevel = calcFrequenciesLevels(dataByLevelsRDD)
+    DataByLevel(uniqLevels, pointers, freqByLevel, dataByLevelsRDD)
   }
 
-  protected case class FreqByLevel(idxLevel: Long, freq: Frequencies)
-  protected def calcFrequenciesLevels(levelsRDD: RDD[Level]): (Map[Long,AliasTable], RDD[FreqByLevel]) = {
+  protected def calcFrequenciesLevels(levelsRDD: RDD[Level]): Array[FreqByLevel] = {
     val levelsCountRDD = levelsRDD
       .map { case Level(idxLevel, depth, idx, value, d1d2) => ((idxLevel, d1d2), 1) }
       .reduceByKey(_ + _)
       .map { case ((idxLevel, d1d2), count) => (idxLevel, (d1d2, count)) }
 
-    val freqLevelsRDD = levelsCountRDD.groupByKey().map { case (idxLevel, counts) => FreqByLevel(idxLevel, calcFrequencies(counts.toList)) }
-    val aliasMap = freqLevelsRDD.map { case FreqByLevel(idxLevel, freq) => (idxLevel, buildAliasTable(freq.freqD1D2)) }.collect().toMap
+    val freqLevels = levelsCountRDD.groupByKey().map { case (idxLevel, counts) => FreqByLevel(idxLevel, calcFrequencies(counts.toList)) }.collect()
 
-    (aliasMap, freqLevelsRDD)
+    freqLevels
   }
 
-  def loadData(sc: SparkContext, filePath: String): RDD[((Long, Double, Int), Array[String])] = {
+  def loadData(sc: SparkContext, filePath: String): DataByLevel = {
     // TO DO - reorder csv
+    // TO DO - find levels in decreasing order of distinct values in each one of them
     val dataLevelRDD = sc.textFile(filePath)
       .map(line => line.split(",")
         .map(_.trim.replace("\"","")))
@@ -165,34 +163,21 @@ class Bootstrap extends Serializable {
       .zipWithIndex()
       .map { case ((value, levels), idx) => ((idx, value, findD1D2(value)), levels) }
 
-    dataLevelRDD
+    val dataByLevel = findLevels(dataLevelRDD)
+    dataByLevel
   }
 
-  def calcSampleCIs(sc: SparkContext, dataRDD: RDD[((Long, Double, Int), Array[String])], numSamples: Int = 25000): (Array[((String, Int), Long)], Map[Long,Array[Long]], RDD[StatsCIByLevel]) = {
-    val (uniqLevels, pointers, levelsRDD) = findLevels(dataRDD)
-    val dataStatsRDD = calcDataStats(levelsRDD)
-    val (aliasMap, freqRDD) = calcFrequenciesLevels(levelsRDD)
-    val freq = freqRDD.filter{ case FreqByLevel(idxLevel, frequency) => idxLevel == 0}.collect()
-    val sampleSize = freq(0).freq.count
+  def calcSampleCIs(sc: SparkContext, data: DataByLevel, numSamples: Int = 25000): RDD[StatsCIByLevel] = {
+    val dataStatsRDD = calcDataStats(data.dataByLevelsRDD)
+    val aliasMap = data.freqByLevel.map { case FreqByLevel(idxLevel, freq) => (idxLevel, buildAliasTable(freq.freqD1D2)) }.toMap
+    val sampleSize = data.freqByLevel.filter { case FreqByLevel(idxLevel, freq) => idxLevel == 0 }(0).freq.count
 
     val bootTableRDD = generateBootstrapTable(sc, sampleSize, numSamples)
-    val bootRDD = generateBootstrapOutcomes(bootTableRDD, levelsRDD, aliasMap)
+    val bootRDD = generateBootstrapOutcomes(bootTableRDD, data.dataByLevelsRDD, aliasMap)
     val momentsRDD = calcMomentsSamples(bootRDD)
     val statsRDD = calcStatsSamples(momentsRDD)
     val groupStatsRDD = groupStats(statsRDD)
-    (uniqLevels, pointers, calcStatsCIs(dataStatsRDD, groupStatsRDD, Array(0.975, 0.99)))
-  }
-
-  def showCIsByGroupId(statsCIRDD: RDD[StatsCIByLevel], groupId: Int): String = {
-    val CIsRDD = statsCIRDD.filter { case StatsCIByLevel(idxLevel, depth, stats) => idxLevel == groupId }
-    val CIs = CIsRDD.collect()
-    compact(render(CIs(0).toJson("group")))
-  }
-
-  def showCIsByLevel(statsCIRDD: RDD[StatsCIByLevel], level: Int): Array[String] = {
-    val CIsRDD = statsCIRDD.filter { case StatsCIByLevel(idxLevel, depth, stats) => depth == level }
-    val CIs = CIsRDD.collect()
-    for (ci <- CIs) yield compact(render(ci.toJson("group")))
+    calcStatsCIs(dataStatsRDD, groupStatsRDD, Array(0.975, 0.99))
   }
 
   def calcResults(bootSampleRDD: RDD[StatsCIByLevel], bootBenfordRDD: RDD[StatsCIByLevel]): RDD[ResultsByLevel] = {
@@ -200,16 +185,41 @@ class Bootstrap extends Serializable {
     calcResultsByLevel(overlapRDD)
   }
 
+  def showCIsByGroupId(statsCIRDD: RDD[StatsCIByLevel], groupId: Int): String = {
+    val CIsRDD = statsCIRDD.filter { case StatsCIByLevel(idxLevel, depth, stats) => idxLevel == groupId }
+    val CIs = CIsRDD.collect()
+    compact(render(CIs(0).toJson("group_" + CIs(0).idxLevel.toString)))
+  }
+
+  def showCIsByLevel(statsCIRDD: RDD[StatsCIByLevel], level: Int): Array[String] = {
+    val CIsRDD = statsCIRDD.filter { case StatsCIByLevel(idxLevel, depth, stats) => depth == level }
+    val CIs = CIsRDD.collect()
+    for (ci <- CIs) yield compact(render(ci.toJson("group_" + ci.idxLevel.toString)))
+  }
+
   def showResultsByGroupId(resultsRDD: RDD[ResultsByLevel], groupId: Int): String = {
     val resRDD = resultsRDD.filter { case ResultsByLevel(idxLevel, depth, results) => idxLevel == groupId }
     val res = resRDD.collect()
-    compact(render(res(0).toJson("group")))
+    compact(render(res(0).toJson("group_" + res(0).idxLevel.toString)))
   }
 
   def showResultsByLevel(resultsRDD: RDD[ResultsByLevel], level: Int): Array[String] = {
     val resRDD = resultsRDD.filter { case ResultsByLevel(idxLevel, depth, results) => depth == level }
     val res = resRDD.collect()
-    for (r <- res) yield compact(render(r.toJson("group")))
+    for (r <- res) yield compact(render(r.toJson("group_" + r.idxLevel.toString)))
+  }
+
+  def showFrequenciesByGroupId(data: DataByLevel, groupId: Int): String = {
+    val frequencies = data.freqByLevel.filter { case FreqByLevel(idxLevel, freq) => idxLevel == groupId }
+                      .map{ case FreqByLevel(idxLevel, freq) => freq.toJson("group_" + idxLevel.toString) }
+    compact(render(frequencies(0)))
+  }
+
+  def showFrequenciesByLevel(data: DataByLevel, level: Int): Array[String] = {
+    val groupIds = data.levels.filter{case ((name, depth), idxLevel) => depth == level}.map{case ((name, depth), idxLevel) => idxLevel}
+    val frequencies = data.freqByLevel.filter { case FreqByLevel(idxLevel, freq) => groupIds.contains(idxLevel) }
+      .map{ case FreqByLevel(idxLevel, freq) => freq.toJson("group_" + idxLevel.toString) }
+    for (f <- frequencies) yield compact(render(f))
   }
 }
 
