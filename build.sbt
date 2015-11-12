@@ -18,8 +18,6 @@ licenses := Seq("Apache-2.0" -> url("http://opensource.org/licenses/Apache-2.0")
 libraryDependencies += "org.apache.spark" %% "spark-core" % "1.4.1" % "provided"
 
 libraryDependencies  ++= Seq(
-  //"org.json4s" %% "json4s-native" % "3.2.10",
-  //"org.json4s" %% "json4s-jackson" % "3.2.10",
   "com.typesafe.play" %% "play-json" % "2.4.2",
   "com.typesafe.play" %% "play-functional" % "2.4.2",
   "org.scalatest" %% "scalatest" % "2.2.1" % "test",

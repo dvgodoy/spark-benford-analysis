@@ -321,8 +321,6 @@ package object util {
     }
   }
 
-  protected[benford] case class ResultsByLevel(idxLevel: Long, depth: Int, results: Results)
-
   protected[benford] case class CIDigits(d1d2: StatsCI, d1: StatsCI, d2: StatsCI, r: RegsCI) {
     assert(d1d2.n == d1.n)
     assert(d1d2.n == d2.n)
@@ -335,23 +333,25 @@ package object util {
 
   protected[benford] case class Frequencies(count: Int, freqD1D2: Array[Double], freqD1: Array[Double], freqD2: Array[Double])
 
-  protected[benford] case class StatsCIByLevel(idxLevel: Long, depth: Int, CIs: CIDigits) {
-    def overlaps(that: StatsCIByLevel) = {
-      assert(this.idxLevel == that.idxLevel && this.depth == that.depth)
-      this.CIs.overlaps(that.CIs)
-    }
-    def contains(exact: StatsDigits) = {
-      this.CIs.contains(exact)
-    }
-  }
   protected[benford] case class Level(idxLevel: Long, depth: Int, idx: Long, value: Double, d1d2: Int)
-  protected[benford] case class FreqByLevel(idxLevel: Long, freq: Frequencies)
-  protected[benford] case class DataByLevel(levels: Map[Long, (String, Int)], hierarchy: Map[Long, Array[Long]], freqByLevel: Array[FreqByLevel] ,dataByLevelsRDD: RDD[Level])
 
   protected[benford] def average[T](xs: Iterable[T])(implicit num: Numeric[T]):Double =
     num.toDouble(xs.sum) / xs.size
 
   protected[benford] def parseDouble(s: String): Option[Double] = Try { s.toDouble }.toOption
+
+  case class DataByLevel(levels: Map[Long, (String, Int)], hierarchy: Map[Long, Array[Long]], freqByLevel: Array[FreqByLevel] ,dataByLevelsRDD: RDD[Level])
+  case class ResultsByLevel(idxLevel: Long, depth: Int, results: Results)
+  case class FreqByLevel(idxLevel: Long, freq: Frequencies)
+  case class StatsCIByLevel(idxLevel: Long, depth: Int, CIs: CIDigits) {
+    protected[benford] def overlaps(that: StatsCIByLevel) = {
+      assert(this.idxLevel == that.idxLevel && this.depth == that.depth)
+      this.CIs.overlaps(that.CIs)
+    }
+    protected[benford] def contains(exact: StatsDigits) = {
+      this.CIs.contains(exact)
+    }
+  }
 
   implicit val FrequenciesWrites = new Writes[Frequencies] {
     def writes(frequency: Frequencies) = Json.obj(
