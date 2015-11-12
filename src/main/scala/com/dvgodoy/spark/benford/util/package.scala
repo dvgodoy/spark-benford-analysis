@@ -4,7 +4,10 @@ import breeze.linalg._
 import breeze.numerics._
 import breeze.stats.distributions.Gaussian
 import org.apache.spark.rdd.RDD
-import org.json4s.JsonDSL._
+import play.api.libs.json._
+import play.api.libs.json.Reads._
+import play.api.libs.json.Writes._
+import play.api.libs.functional.syntax._
 import scala.collection.immutable.Range
 import scala.collection.mutable.ListBuffer
 import scala.util.Try
@@ -104,53 +107,19 @@ package object util {
   protected case class OverlapDigits(n: Double, d1d2: StatsOverlap, d1: StatsOverlap, d2: StatsOverlap, r: RegsOverlap)
   protected case class ContainDigits(n: Double, d1d2: StatsContain, d1: StatsContain, d2: StatsContain, r: RegsContain)
 
-  protected case class Results(stats: Boolean, d1d2: StatsOC, d1: StatsOC, d2: StatsOC, regs: Boolean, r: RegsOC) {
-    def toJson(name: String) =
-      (name ->
-        ("diagnostics" ->
-          ("stats" -> stats) ~
-          ("regs" -> regs)
-        ) ~
-        ("details" ->
-          d1d2.toJson("d1d2") ~
-          d1.toJson("d1") ~
-          d2.toJson("d2") ~
-          r.toJson("r")
-        )
-      )
-  }
+  protected case class Results(n: Double, stats: Boolean, regs: Boolean, d1d2: StatsOC, d1: StatsOC, d2: StatsOC, r: RegsOC)
 
   protected case class RegsOC(pearsonOC: OverlapContain, alpha0: OverlapContain, alpha1: OverlapContain, beta0: OverlapContain, beta1: OverlapContain) {
     def count: Int = Array(alpha0.result, alpha1.result, beta0.result, beta1.result).map(if (_) 1 else 0).sum
     def pearson: Boolean = pearsonOC.result
-    def toJson(name: String) =
-      (name ->
-        pearsonOC.toJson("pearson") ~
-          alpha0.toJson("alpha0") ~
-          alpha1.toJson("alpha1") ~
-          beta0.toJson("beta0") ~
-          beta1.toJson("beta1")
-        )
   }
 
   protected case class OverlapContain(overlaps: Boolean, contains: Boolean) {
     def result: Boolean = overlaps || contains
-    def toJson(name: String) =
-      (name ->
-        ("overlaps" -> overlaps) ~
-          ("contains" -> contains)
-        )
   }
 
   protected case class StatsOC(mean: OverlapContain, variance: OverlapContain, skewness: OverlapContain, kurtosis: OverlapContain) {
     def count: Int = Array(mean.result, variance.result, skewness.result, kurtosis.result).map(if (_) 1 else 0).sum
-    def toJson(name: String) =
-      (name ->
-        mean.toJson("mean") ~
-          variance.toJson("variance") ~
-          skewness.toJson("skewness") ~
-          kurtosis.toJson("kurtosis")
-        )
   }
 
   protected case class StatsCI(n: Double,
@@ -174,14 +143,6 @@ package object util {
       this.skewness.map { case ci => Contain(ci.alpha, ci.contains(exact.skewness.head)) },
       this.kurtosis.map { case ci => Contain(ci.alpha, ci.contains(exact.kurtosis.head)) }
     )
-    def toJson(name: String) =
-      (name ->
-        ("mean" -> mean.toList.map {_.toJson}) ~
-          ("variance" -> variance.toList.map(_.toJson)) ~
-          ("skewness" -> skewness.toList.map(_.toJson)) ~
-          ("kurtosis" -> kurtosis.toList.map(_.toJson)) ~
-          ("n" -> n)
-        )
   }
 
   protected case class RegsCI(n: Double,
@@ -209,29 +170,11 @@ package object util {
       this.beta0.map { case ci => Contain(ci.alpha, ci.contains(if (exact.beta0.nonEmpty) exact.beta0.head else Inf)) },
       this.beta1.map { case ci => Contain(ci.alpha, ci.contains(if (exact.beta1.nonEmpty) exact.beta1.head else Inf)) }
     )
-    def toJson(name: String) =
-      (name ->
-        ("pearson" -> pearson.toList.map(_.toJson)) ~
-          ("alpha0" -> alpha0.toList.map(_.toJson)) ~
-          ("alpha1" -> alpha1.toList.map(_.toJson)) ~
-          ("beta0" -> beta0.toList.map(_.toJson)) ~
-          ("beta1" -> beta1.toList.map(_.toJson)) ~
-          ("n" -> n)
-        )
   }
 
   protected case class CI(alpha: Double, li: Double, ui: Double, lower: Double, upper: Double, t0: Double) {
     def overlaps(that: CI) = (this.lower <= that.upper) && (this.upper >= that.lower)
     def contains(exact: Double) = (exact >= this.lower) && (exact <= this.upper)
-    def toJson =
-      (
-        ("alpha" -> "%.10f".format(alpha).toDouble) ~
-          ("li" -> "%.10f".format(li).toDouble) ~
-          ("ui" -> "%.10f".format(ui).toDouble) ~
-          ("lower" -> "%.10f".format(lower).toDouble) ~
-          ("upper" -> "%.10f".format(upper).toDouble) ~
-          ("t0" -> "%.10f".format(t0).toDouble)
-        )
   }
 
   protected[benford] def findD1D2(x: Double): Int = {
@@ -374,18 +317,11 @@ package object util {
 
       val paramFinal = if (overlap.n >= 1000 && doubleDigitsCount == 4) true else if (singleDigitsCount == 8) true else regsOC.pearson
       val regFinal = overlap.n >= 1000 && regCount == 4
-      ResultsByLevel(idxLevel, depth, Results(paramFinal, statsOCD1D2, statsOCD1, statsOCD2, regFinal, regsOC))
+      ResultsByLevel(idxLevel, depth, Results(overlap.n, paramFinal, regFinal, statsOCD1D2, statsOCD1, statsOCD2, regsOC))
     }
   }
 
-  protected[benford] case class ResultsByLevel(idxLevel: Long, depth: Int, results: Results) {
-    def toJson(name: String) =
-      (name ->
-        ("id" -> idxLevel) ~
-          ("level" -> depth) ~
-          results.toJson("results")
-        )
-  }
+  protected[benford] case class ResultsByLevel(idxLevel: Long, depth: Int, results: Results)
 
   protected[benford] case class CIDigits(d1d2: StatsCI, d1: StatsCI, d2: StatsCI, r: RegsCI) {
     assert(d1d2.n == d1.n)
@@ -395,30 +331,9 @@ package object util {
       OverlapDigits(d1d2.n, this.d1d2.overlaps(that.d1d2), this.d1.overlaps(that.d1), this.d2.overlaps(that.d2), this.r.overlaps(that.r))
     def contains(exact: StatsDigits) =
       ContainDigits(d1d2.n, this.d1d2.contains(exact.d1d2), this.d1.contains(exact.d1), this.d2.contains(exact.d2), this.r.contains(exact.r))
-    def toJson(name: String) =
-      (name ->
-        d1d2.toJson("d1d2") ~
-          d1.toJson("d1") ~
-          d2.toJson("d2") ~
-          r.toJson("r")
-        )
   }
 
-  protected[benford] case class Frequencies(count: Int, freqD1D2: Array[Double], freqD1: Array[Double], freqD2: Array[Double]) {
-    def toJson(name: String) =
-      (name ->
-        ("count" -> count) ~
-          ("d1d2" ->
-            freqD1D2.zipWithIndex.toList.map{ case (freq, idx) =>
-              (((idx + 10).toString -> "%.10f".format(freq).toDouble))}) ~
-          ("d1" ->
-            freqD1.zipWithIndex.toList.map{ case (freq, idx) =>
-              (((idx + 1).toString -> "%.10f".format(freq).toDouble))}) ~
-          ("d2" ->
-            freqD2.zipWithIndex.toList.map{ case (freq, idx) =>
-              (((idx + 1).toString -> "%.10f".format(freq).toDouble))})
-        )
-  }
+  protected[benford] case class Frequencies(count: Int, freqD1D2: Array[Double], freqD1: Array[Double], freqD2: Array[Double])
 
   protected[benford] case class StatsCIByLevel(idxLevel: Long, depth: Int, CIs: CIDigits) {
     def overlaps(that: StatsCIByLevel) = {
@@ -428,20 +343,181 @@ package object util {
     def contains(exact: StatsDigits) = {
       this.CIs.contains(exact)
     }
-    def toJson(name: String) =
-      (name ->
-        ("id" -> idxLevel) ~
-          ("level" -> depth) ~
-          CIs.toJson("CIs")
-        )
   }
-
   protected[benford] case class Level(idxLevel: Long, depth: Int, idx: Long, value: Double, d1d2: Int)
   protected[benford] case class FreqByLevel(idxLevel: Long, freq: Frequencies)
-  protected[benford] case class DataByLevel(levels: Array[((String, Int), Long)], hierarchy: Map[Long,Array[Long]], freqByLevel: Array[FreqByLevel] ,dataByLevelsRDD: RDD[Level])
+  protected[benford] case class DataByLevel(levels: Map[Long, (String, Int)], hierarchy: Map[Long, Array[Long]], freqByLevel: Array[FreqByLevel] ,dataByLevelsRDD: RDD[Level])
 
   protected[benford] def average[T](xs: Iterable[T])(implicit num: Numeric[T]):Double =
     num.toDouble(xs.sum) / xs.size
 
   protected[benford] def parseDouble(s: String): Option[Double] = Try { s.toDouble }.toOption
+
+  implicit val FrequenciesWrites = new Writes[Frequencies] {
+    def writes(frequency: Frequencies) = Json.obj(
+      "count" -> frequency.count,
+      "d1d2" -> frequency.freqD1D2.map{ case freq => "%.10f".format(freq).toDouble },
+      "d1" -> frequency.freqD1.map{ case freq => "%.10f".format(freq).toDouble },
+      "d2" -> frequency.freqD2.map{ case freq => "%.10f".format(freq).toDouble }
+    )
+  }
+
+  implicit val FrequenciesReads: Reads[Frequencies] = (
+    (JsPath \ "count").read[Int] and
+    (JsPath \ "d1d2").read[Array[Double]] and
+    (JsPath \ "d1").read[Array[Double]] and
+    (JsPath \ "d2").read[Array[Double]]
+  )(Frequencies.apply _)
+
+  implicit val CIWrites = new Writes[CI] {
+    def writes(ci: CI) = Json.obj(
+      "alpha" -> ci.alpha,
+      "li" -> (if (!ci.li.isInfinite) "%.10f".format(ci.li).toDouble else 0.0),
+      "ui" -> (if (!ci.ui.isInfinite) "%.10f".format(ci.ui).toDouble else 0.0),
+      "lower" -> (if (!ci.lower.isInfinite) "%.10f".format(ci.lower).toDouble else 0.0),
+      "upper" -> (if (!ci.upper.isInfinite) "%.10f".format(ci.upper).toDouble else 0.0),
+      "t0" -> (if (!ci.t0.isInfinite) "%.10f".format(ci.t0).toDouble else 0.0)
+    )
+  }
+
+  implicit val CIReads: Reads[CI] = (
+    (JsPath \ "alpha").read[Double] and
+    (JsPath \ "li").read[Double] and
+    (JsPath \ "ui").read[Double] and
+    (JsPath \ "lower").read[Double] and
+    (JsPath \ "upper").read[Double] and
+    (JsPath \ "t0").read[Double]
+  )(CI.apply _)
+
+  implicit val StatsCIWrites: Writes[StatsCI] = (
+    (JsPath \ "n").write[Double] and
+    (JsPath \ "mean").write[Array[CI]] and
+    (JsPath \ "variance").write[Array[CI]] and
+    (JsPath \ "skewness").write[Array[CI]] and
+    (JsPath \ "kurtosis").write[Array[CI]]
+  )(unlift(StatsCI.unapply))
+
+  implicit val StatsCIReads: Reads[StatsCI] = (
+    (JsPath \ "n").read[Double] and
+    (JsPath \ "mean").read[Array[CI]]  and
+    (JsPath \ "variance").read[Array[CI]]  and
+    (JsPath \ "skewness").read[Array[CI]]  and
+    (JsPath \ "kurtosis").read[Array[CI]]
+  )(StatsCI.apply _)
+
+  implicit val RegsCIWrites: Writes[RegsCI] = (
+    (JsPath \ "n").write[Double] and
+    (JsPath \ "pearson").write[Array[CI]] and
+    (JsPath \ "alpha0").write[Array[CI]] and
+    (JsPath \ "alpha1").write[Array[CI]] and
+    (JsPath \ "beta0").write[Array[CI]] and
+    (JsPath \ "beta1").write[Array[CI]]
+  )(unlift(RegsCI.unapply))
+
+  implicit val RegsCIReads: Reads[RegsCI] = (
+    (JsPath \ "n").read[Double] and
+    (JsPath \ "pearson").read[Array[CI]]  and
+    (JsPath \ "alpha0").read[Array[CI]]  and
+    (JsPath \ "alpha1").read[Array[CI]]  and
+    (JsPath \ "beta0").read[Array[CI]]  and
+    (JsPath \ "beta1").read[Array[CI]]
+  )(RegsCI.apply _)
+
+  implicit val CIDigitsWrites: Writes[CIDigits] = (
+    (JsPath \ "d1d2").write[StatsCI] and
+    (JsPath \ "d1").write[StatsCI] and
+    (JsPath \ "d2").write[StatsCI] and
+    (JsPath \ "r").write[RegsCI]
+  )(unlift(CIDigits.unapply))
+
+  implicit val CIDigitsReads: Reads[CIDigits] = (
+    (JsPath \ "d1d2").read[StatsCI] and
+    (JsPath \ "d1").read[StatsCI]  and
+    (JsPath \ "d2").read[StatsCI]  and
+    (JsPath \ "r").read[RegsCI]
+  )(CIDigits.apply _)
+
+  implicit val StatsCIByLevelWrites: Writes[StatsCIByLevel] = (
+    (JsPath \ "id").write[Long] and
+    (JsPath \ "level").write[Int] and
+    (JsPath \ "CIs").write[CIDigits]
+  )(unlift(StatsCIByLevel.unapply))
+
+  implicit val StatsCIByLevelReads: Reads[StatsCIByLevel] = (
+    (JsPath \ "id").read[Long] and
+    (JsPath \ "level").read[Int]  and
+    (JsPath \ "CIs").read[CIDigits]
+  )(StatsCIByLevel.apply _)
+
+  implicit val OverlapContainWrites: Writes[OverlapContain] = (
+    (JsPath \ "overlaps").write[Boolean] and
+    (JsPath \ "contains").write[Boolean]
+  )(unlift(OverlapContain.unapply))
+
+  implicit val OverlapContainReads: Reads[OverlapContain] = (
+    (JsPath \ "overlaps").read[Boolean] and
+    (JsPath \ "contains").read[Boolean]
+  )(OverlapContain.apply _)
+
+  implicit val StatsOCWrites: Writes[StatsOC] = (
+    (JsPath \ "mean").write[OverlapContain] and
+    (JsPath \ "variance").write[OverlapContain] and
+    (JsPath \ "skewness").write[OverlapContain] and
+    (JsPath \ "kurtosis").write[OverlapContain]
+  )(unlift(StatsOC.unapply))
+
+  implicit val StatsOCReads: Reads[StatsOC] = (
+    (JsPath \ "mean").read[OverlapContain] and
+    (JsPath \ "variance").read[OverlapContain] and
+    (JsPath \ "skewness").read[OverlapContain] and
+    (JsPath \ "kurtosis").read[OverlapContain]
+  )(StatsOC.apply _)
+
+  implicit val RegsOCWrites: Writes[RegsOC] = (
+    (JsPath \ "pearson").write[OverlapContain] and
+    (JsPath \ "alpha0").write[OverlapContain] and
+    (JsPath \ "alpha1").write[OverlapContain] and
+    (JsPath \ "beta0").write[OverlapContain] and
+    (JsPath \ "beta1").write[OverlapContain]
+  )(unlift(RegsOC.unapply))
+
+  implicit val RegsOCReads: Reads[RegsOC] = (
+    (JsPath \ "pearson").read[OverlapContain] and
+    (JsPath \ "alpha0").read[OverlapContain] and
+    (JsPath \ "alpha1").read[OverlapContain] and
+    (JsPath \ "beta0").read[OverlapContain] and
+    (JsPath \ "beta1").read[OverlapContain]
+  )(RegsOC.apply _)
+
+  implicit val ResultsWrites: Writes[Results] = (
+    (JsPath \ "n").write[Double] and
+    (JsPath \ "statsDiag").write[Boolean] and
+    (JsPath \ "regsDiag").write[Boolean] and
+    (JsPath \ "d1d2").write[StatsOC] and
+    (JsPath \ "d1").write[StatsOC] and
+    (JsPath \ "d2").write[StatsOC] and
+    (JsPath \ "reg").write[RegsOC]
+  )(unlift(Results.unapply))
+
+  implicit val ResultsReads: Reads[Results] = (
+    (JsPath \ "n").read[Double] and
+    (JsPath \ "stats").read[Boolean] and
+    (JsPath \ "regs").read[Boolean] and
+    (JsPath \ "d1d2").read[StatsOC] and
+    (JsPath \ "d1").read[StatsOC] and
+    (JsPath \ "d2").read[StatsOC] and
+    (JsPath \ "reg").read[RegsOC]
+  )(Results.apply _)
+
+  implicit val ResultsByLevelWrites: Writes[ResultsByLevel] = (
+    (JsPath \ "id").write[Long] and
+    (JsPath \ "level").write[Int] and
+    (JsPath \ "results").write[Results]
+  )(unlift(ResultsByLevel.unapply))
+
+  implicit val ResultsByLevelReads: Reads[ResultsByLevel] = (
+    (JsPath \ "id").read[Long] and
+    (JsPath \ "level").read[Int]  and
+    (JsPath \ "results").read[Results]
+  )(ResultsByLevel.apply _)
 }

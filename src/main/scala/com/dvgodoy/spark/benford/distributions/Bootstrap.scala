@@ -7,8 +7,7 @@ import com.dvgodoy.spark.benford.util._
 import org.apache.commons.math3.random.MersenneTwister
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.json4s.JsonDSL._
-import org.json4s.jackson.JsonMethods._
+import play.api.libs.json._
 import scala.collection.mutable
 
 class Bootstrap extends Serializable {
@@ -137,7 +136,7 @@ class Bootstrap extends Serializable {
 
     val dataByLevelsRDD = uniqLevelsRDD.join(levelsRDD).map { case ((name, depth), (idxLevel, (idx, value, d1d2))) => Level(idxLevel, depth, idx, value, d1d2) }
     val freqByLevel = calcFrequenciesLevels(dataByLevelsRDD)
-    DataByLevel(uniqLevels, pointers, freqByLevel, dataByLevelsRDD)
+    DataByLevel(uniqLevels.map{ case ((classif, depth), idx) => (idx -> (classif, depth))}.toMap, pointers, freqByLevel, dataByLevelsRDD)
   }
 
   protected def calcFrequenciesLevels(levelsRDD: RDD[Level]): Array[FreqByLevel] = {
@@ -185,41 +184,41 @@ class Bootstrap extends Serializable {
     calcResultsByLevel(overlapRDD)
   }
 
-  def showCIsByGroupId(statsCIRDD: RDD[StatsCIByLevel], groupId: Int): String = {
+  def showCIsByGroupId(statsCIRDD: RDD[StatsCIByLevel], groupId: Int): play.api.libs.json.JsValue = {
     val CIsRDD = statsCIRDD.filter { case StatsCIByLevel(idxLevel, depth, stats) => idxLevel == groupId }
     val CIs = CIsRDD.collect()
-    compact(render(CIs(0).toJson("group_" + CIs(0).idxLevel.toString)))
+    Json.toJson(CIs(0))
   }
 
-  def showCIsByLevel(statsCIRDD: RDD[StatsCIByLevel], level: Int): Array[String] = {
+  def showCIsByLevel(statsCIRDD: RDD[StatsCIByLevel], level: Int): Array[play.api.libs.json.JsValue] = {
     val CIsRDD = statsCIRDD.filter { case StatsCIByLevel(idxLevel, depth, stats) => depth == level }
     val CIs = CIsRDD.collect()
-    for (ci <- CIs) yield compact(render(ci.toJson("group_" + ci.idxLevel.toString)))
+    for (ci <- CIs) yield Json.toJson(ci)
   }
 
-  def showResultsByGroupId(resultsRDD: RDD[ResultsByLevel], groupId: Int): String = {
+  def showResultsByGroupId(resultsRDD: RDD[ResultsByLevel], groupId: Int): play.api.libs.json.JsValue = {
     val resRDD = resultsRDD.filter { case ResultsByLevel(idxLevel, depth, results) => idxLevel == groupId }
     val res = resRDD.collect()
-    compact(render(res(0).toJson("group_" + res(0).idxLevel.toString)))
+    Json.toJson(res(0))
   }
 
-  def showResultsByLevel(resultsRDD: RDD[ResultsByLevel], level: Int): Array[String] = {
+  def showResultsByLevel(resultsRDD: RDD[ResultsByLevel], level: Int): Array[play.api.libs.json.JsValue] = {
     val resRDD = resultsRDD.filter { case ResultsByLevel(idxLevel, depth, results) => depth == level }
     val res = resRDD.collect()
-    for (r <- res) yield compact(render(r.toJson("group_" + r.idxLevel.toString)))
+    for (r <- res) yield Json.toJson(r)
   }
 
-  def showFrequenciesByGroupId(data: DataByLevel, groupId: Int): String = {
+  def showFrequenciesByGroupId(data: DataByLevel, groupId: Int): play.api.libs.json.JsValue = {
     val frequencies = data.freqByLevel.filter { case FreqByLevel(idxLevel, freq) => idxLevel == groupId }
-                      .map{ case FreqByLevel(idxLevel, freq) => freq.toJson("group_" + idxLevel.toString) }
-    compact(render(frequencies(0)))
+                      .map{ case FreqByLevel(idxLevel, freq) => freq }
+    Json.toJson(frequencies(0))
   }
 
-  def showFrequenciesByLevel(data: DataByLevel, level: Int): Array[String] = {
-    val groupIds = data.levels.filter{case ((name, depth), idxLevel) => depth == level}.map{case ((name, depth), idxLevel) => idxLevel}
+  def showFrequenciesByLevel(data: DataByLevel, level: Int): Array[play.api.libs.json.JsValue] = {
+    val groupIds = data.levels.filter{case (idxLevel, (name, depth)) => depth == level}.keySet
     val frequencies = data.freqByLevel.filter { case FreqByLevel(idxLevel, freq) => groupIds.contains(idxLevel) }
-      .map{ case FreqByLevel(idxLevel, freq) => freq.toJson("group_" + idxLevel.toString) }
-    for (f <- frequencies) yield compact(render(f))
+      .map{ case FreqByLevel(idxLevel, freq) => freq }
+    for (f <- frequencies) yield Json.toJson(f)
   }
 }
 
