@@ -35,7 +35,6 @@ class Bootstrap extends Serializable {
   }
 
   private def calcOverlaps(bootStatsCIRDD: RDD[StatsCIByLevel], benfordStatsCIRDD: RDD[StatsCIByLevel]): RDD[OverlapsByLevel] = {
-    assert(bootStatsCIRDD.count() == benfordStatsCIRDD.count())
     val overlapRDD = bootStatsCIRDD.map{ case StatsCIByLevel(idxLevel, depth, stats) => ((idxLevel, depth), stats) }
       .join(benfordStatsCIRDD.map{ case StatsCIByLevel(idxLevel, depth, stats) => ((idxLevel, depth), stats) })
       .map{ case ((idxLevel, depth), (boot, benford)) => OverlapsByLevel(idxLevel, depth, boot.overlaps(benford), boot.contains(BenfordStatsDigits)) }
@@ -118,6 +117,9 @@ class Bootstrap extends Serializable {
   }
 
   protected def findLevels(dataLevelRDD: RDD[((Long, Double, Int), Array[String])]): DataByLevel = {
+    val sc = dataLevelRDD.context
+    sc.setJobDescription("findLevels")
+
     val concatRDD = dataLevelRDD
       .map { case (value, levels) => (value, levels
                                   .zipWithIndex
@@ -126,33 +128,40 @@ class Bootstrap extends Serializable {
 
     val uniqLevelsRDD = levelsRDD.map { case (classif, value) => classif }.distinct().sortBy(identity).zipWithIndex()
     val uniqLevels = uniqLevelsRDD.collect()
+    val levels = uniqLevels.map{ case ((classif, depth), idx) => (idx -> (classif, depth))}.toMap
 
     val hierarchies = concatRDD.map { case (value, levels) => levels.map(_._1).toList }.distinct().collect()
     val idxHierarchies = hierarchies
       .map(levels => levels.flatMap(hierarchy => uniqLevels
                                   .filter{case ((level, depth), idxLevel) => level == hierarchy}.map{case ((level, depth), idxLevel) => idxLevel }))
+
     val pointers = idxHierarchies.flatMap(levels => levels.zipWithIndex.map{case (top, idx) => (top, if (idx < (levels.length - 1)) levels(idx + 1) else -1)})
       .distinct.groupBy(_._1).map{case (top, below) => (top, below.map(_._2))}
 
     val dataByLevelsRDD = uniqLevelsRDD.join(levelsRDD).map { case ((name, depth), (idxLevel, (idx, value, d1d2))) => Level(idxLevel, depth, idx, value, d1d2) }
+
     val freqByLevel = calcFrequenciesLevels(dataByLevelsRDD)
-    DataByLevel(uniqLevels.map{ case ((classif, depth), idx) => (idx -> (classif, depth))}.toMap, pointers, freqByLevel, dataByLevelsRDD)
+    sc.setJobDescription("")
+    DataByLevel(levels, pointers, freqByLevel, dataByLevelsRDD)
   }
 
   protected def calcFrequenciesLevels(levelsRDD: RDD[Level]): Array[FreqByLevel] = {
+    val sc = levelsRDD.sparkContext
+    sc.setJobDescription("calcFrequenciesLevels")
     val levelsCountRDD = levelsRDD
       .map { case Level(idxLevel, depth, idx, value, d1d2) => ((idxLevel, d1d2), 1) }
       .reduceByKey(_ + _)
       .map { case ((idxLevel, d1d2), count) => (idxLevel, (d1d2, count)) }
 
     val freqLevels = levelsCountRDD.groupByKey().map { case (idxLevel, counts) => FreqByLevel(idxLevel, calcFrequencies(counts.toList)) }.collect()
-
+    sc.setJobDescription("")
     freqLevels
   }
 
   def loadData(sc: SparkContext, filePath: String): DataByLevel = {
     // TO DO - reorder csv
     // TO DO - find levels in decreasing order of distinct values in each one of them
+    sc.setJobDescription("loadData")
     val dataLevelRDD = sc.textFile(filePath)
       .map(line => line.split(",")
         .map(_.trim.replace("\"","")))
@@ -163,6 +172,7 @@ class Bootstrap extends Serializable {
       .map { case ((value, levels), idx) => ((idx, value, findD1D2(value)), levels) }
 
     val dataByLevel = findLevels(dataLevelRDD)
+    sc.setJobDescription("")
     dataByLevel
   }
 
@@ -185,26 +195,38 @@ class Bootstrap extends Serializable {
   }
 
   def getCIsByGroupId(statsCIRDD: RDD[StatsCIByLevel], groupId: Int): JsValue = {
+    val sc = statsCIRDD.sparkContext
+    sc.setJobDescription("getCIsByGroupId")
     val CIsRDD = statsCIRDD.filter { case StatsCIByLevel(idxLevel, depth, stats) => idxLevel == groupId }
     val CIs = CIsRDD.collect()
+    sc.setJobDescription("")
     Json.toJson(CIs)
   }
 
   def getCIsByLevel(statsCIRDD: RDD[StatsCIByLevel], level: Int): JsValue = {
+    val sc = statsCIRDD.sparkContext
+    sc.setJobDescription("getCIsByLevel")
     val CIsRDD = statsCIRDD.filter { case StatsCIByLevel(idxLevel, depth, stats) => depth == level }
     val CIs = CIsRDD.collect()
+    sc.setJobDescription("")
     Json.toJson(CIs)
   }
 
   def getResultsByGroupId(resultsRDD: RDD[ResultsByLevel], groupId: Int): JsValue = {
+    val sc = resultsRDD.sparkContext
+    sc.setJobDescription("getResultsByGroupId")
     val resRDD = resultsRDD.filter { case ResultsByLevel(idxLevel, depth, results) => idxLevel == groupId }
     val res = resRDD.collect()
+    sc.setJobDescription("")
     Json.toJson(res)
   }
 
   def getResultsByLevel(resultsRDD: RDD[ResultsByLevel], level: Int): JsValue = {
+    val sc = resultsRDD.sparkContext
+    sc.setJobDescription("getResultsByLevel")
     val resRDD = resultsRDD.filter { case ResultsByLevel(idxLevel, depth, results) => depth == level }
     val res = resRDD.collect()
+    sc.setJobDescription("")
     Json.toJson(res)
   }
 
@@ -219,6 +241,12 @@ class Bootstrap extends Serializable {
     val frequencies = data.freqByLevel.filter { case FreqByLevel(idxLevel, freq) => groupIds.contains(idxLevel) }
       .map{ case FreqByLevel(idxLevel, freq) => freq }
     Json.toJson(frequencies)
+  }
+
+  def getGroups(data: DataByLevel): JsValue = {
+    val groups = (data.levels.toList.sortBy(_._1) zip data.hierarchy.toList.sortBy(_._1))
+                .map{case ((idxLevel,(name,depth)),(idx,children)) => Group(idxLevel, depth, name, children.sorted)}
+    Json.toJson(groups)
   }
 }
 

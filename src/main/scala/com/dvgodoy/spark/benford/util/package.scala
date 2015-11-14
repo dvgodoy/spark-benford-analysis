@@ -352,6 +352,7 @@ package object util {
       this.CIs.contains(exact)
     }
   }
+  case class Group(idxLevel: Long, depth: Int, name: String, children: Array[Long])
 
   implicit val FrequenciesWrites = new Writes[Frequencies] {
     def writes(frequency: Frequencies) = Json.obj(
@@ -520,4 +521,18 @@ package object util {
     (JsPath \ "level").read[Int]  and
     (JsPath \ "results").read[Results]
   )(ResultsByLevel.apply _)
+
+  implicit val GroupWrites: Writes[Group] = (
+    (JsPath \ "id").write[Long] and
+    (JsPath \ "level").write[Int] and
+    (JsPath \ "name").write[String] and
+    (JsPath \ "children").write[Array[Long]]
+  )(unlift(Group.unapply))
+
+  implicit val GroupReads: Reads[Group] = (
+    (JsPath \ "id").read[Long] and
+    (JsPath \ "level").read[Int] and
+    (JsPath \ "name").read[String] and
+    (JsPath \ "children").read[Array[Long]]
+  )(Group.apply _)
 }
