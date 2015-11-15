@@ -158,10 +158,10 @@ class Bootstrap extends Serializable {
     freqLevels
   }
 
-  def loadData(sc: SparkContext, filePath: String): DataByLevel = {
+  def loadData(sc: SparkContext, filePath: String)(implicit jobId: JobId): DataByLevel = {
     // TO DO - reorder csv
     // TO DO - find levels in decreasing order of distinct values in each one of them
-    sc.setJobDescription("loadData")
+    sc.setJobDescription("loadData." + jobId.id)
     val dataLevelRDD = sc.textFile(filePath)
       .map(line => line.split(",")
         .map(_.trim.replace("\"","")))
@@ -194,36 +194,36 @@ class Bootstrap extends Serializable {
     calcResultsByLevel(overlapRDD)
   }
 
-  def getCIsByGroupId(statsCIRDD: RDD[StatsCIByLevel], groupId: Int): JsValue = {
+  def getCIsByGroupId(statsCIRDD: RDD[StatsCIByLevel], groupId: Int)(implicit jobId: JobId): JsValue = {
     val sc = statsCIRDD.sparkContext
-    sc.setJobDescription("getCIsByGroupId")
+    sc.setJobDescription("getCIsByGroupId." + jobId.id)
     val CIsRDD = statsCIRDD.filter { case StatsCIByLevel(idxLevel, depth, stats) => idxLevel == groupId }
     val CIs = CIsRDD.collect()
     sc.setJobDescription("")
     Json.toJson(CIs)
   }
 
-  def getCIsByLevel(statsCIRDD: RDD[StatsCIByLevel], level: Int): JsValue = {
+  def getCIsByLevel(statsCIRDD: RDD[StatsCIByLevel], level: Int)(implicit jobId: JobId): JsValue = {
     val sc = statsCIRDD.sparkContext
-    sc.setJobDescription("getCIsByLevel")
+    sc.setJobDescription("getCIsByLevel." + jobId.id)
     val CIsRDD = statsCIRDD.filter { case StatsCIByLevel(idxLevel, depth, stats) => depth == level }
     val CIs = CIsRDD.collect()
     sc.setJobDescription("")
     Json.toJson(CIs)
   }
 
-  def getResultsByGroupId(resultsRDD: RDD[ResultsByLevel], groupId: Int): JsValue = {
+  def getResultsByGroupId(resultsRDD: RDD[ResultsByLevel], groupId: Int)(implicit jobId: JobId): JsValue = {
     val sc = resultsRDD.sparkContext
-    sc.setJobDescription("getResultsByGroupId")
+    sc.setJobDescription("getResultsByGroupId." + jobId.id)
     val resRDD = resultsRDD.filter { case ResultsByLevel(idxLevel, depth, results) => idxLevel == groupId }
     val res = resRDD.collect()
     sc.setJobDescription("")
     Json.toJson(res)
   }
 
-  def getResultsByLevel(resultsRDD: RDD[ResultsByLevel], level: Int): JsValue = {
+  def getResultsByLevel(resultsRDD: RDD[ResultsByLevel], level: Int)(implicit jobId: JobId): JsValue = {
     val sc = resultsRDD.sparkContext
-    sc.setJobDescription("getResultsByLevel")
+    sc.setJobDescription("getResultsByLevel." + jobId.id)
     val resRDD = resultsRDD.filter { case ResultsByLevel(idxLevel, depth, results) => depth == level }
     val res = resRDD.collect()
     sc.setJobDescription("")

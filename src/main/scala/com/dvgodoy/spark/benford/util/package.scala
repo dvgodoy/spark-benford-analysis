@@ -535,4 +535,6 @@ package object util {
     (JsPath \ "name").read[String] and
     (JsPath \ "children").read[Array[Long]]
   )(Group.apply _)
+
+  case class JobId(id: String)
 }
