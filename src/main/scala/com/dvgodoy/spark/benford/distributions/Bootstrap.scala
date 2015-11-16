@@ -116,9 +116,9 @@ class Bootstrap extends Serializable {
     groupStats(statsOriginalRDD)
   }
 
-  protected def findLevels(dataLevelRDD: RDD[((Long, Double, Int), Array[String])]): DataByLevel = {
+  protected def findLevels(dataLevelRDD: RDD[((Long, Double, Int), Array[String])])(implicit jobId: JobId): DataByLevel = {
     val sc = dataLevelRDD.context
-    sc.setJobDescription("findLevels")
+    sc.setJobDescription(jobId.id + ".findLevels")
 
     val concatRDD = dataLevelRDD
       .map { case (value, levels) => (value, levels
@@ -145,9 +145,9 @@ class Bootstrap extends Serializable {
     DataByLevel(levels, pointers, freqByLevel, dataByLevelsRDD)
   }
 
-  protected def calcFrequenciesLevels(levelsRDD: RDD[Level]): Array[FreqByLevel] = {
+  protected def calcFrequenciesLevels(levelsRDD: RDD[Level])(implicit jobId: JobId): Array[FreqByLevel] = {
     val sc = levelsRDD.sparkContext
-    sc.setJobDescription("calcFrequenciesLevels")
+    sc.setJobDescription(jobId.id + ".calcFrequenciesLevels")
     val levelsCountRDD = levelsRDD
       .map { case Level(idxLevel, depth, idx, value, d1d2) => ((idxLevel, d1d2), 1) }
       .reduceByKey(_ + _)
@@ -161,7 +161,7 @@ class Bootstrap extends Serializable {
   def loadData(sc: SparkContext, filePath: String)(implicit jobId: JobId): DataByLevel = {
     // TO DO - reorder csv
     // TO DO - find levels in decreasing order of distinct values in each one of them
-    sc.setJobDescription("loadData." + jobId.id)
+    sc.setJobDescription(jobId.id + ".loadData")
     val dataLevelRDD = sc.textFile(filePath)
       .map(line => line.split(",")
         .map(_.trim.replace("\"","")))
@@ -186,7 +186,8 @@ class Bootstrap extends Serializable {
     val momentsRDD = calcMomentsSamples(bootRDD)
     val statsRDD = calcStatsSamples(momentsRDD)
     val groupStatsRDD = groupStats(statsRDD)
-    calcStatsCIs(dataStatsRDD, groupStatsRDD, Array(0.975, 0.99))
+    val statsCIRDD = calcStatsCIs(dataStatsRDD, groupStatsRDD, Array(0.975, 0.99))
+    statsCIRDD
   }
 
   def calcResults(bootSampleRDD: RDD[StatsCIByLevel], bootBenfordRDD: RDD[StatsCIByLevel]): RDD[ResultsByLevel] = {
@@ -196,7 +197,7 @@ class Bootstrap extends Serializable {
 
   def getCIsByGroupId(statsCIRDD: RDD[StatsCIByLevel], groupId: Int)(implicit jobId: JobId): JsValue = {
     val sc = statsCIRDD.sparkContext
-    sc.setJobDescription("getCIsByGroupId." + jobId.id)
+    sc.setJobDescription(jobId.id + ".getCIsByGroupId")
     val CIsRDD = statsCIRDD.filter { case StatsCIByLevel(idxLevel, depth, stats) => idxLevel == groupId }
     val CIs = CIsRDD.collect()
     sc.setJobDescription("")
@@ -205,7 +206,7 @@ class Bootstrap extends Serializable {
 
   def getCIsByLevel(statsCIRDD: RDD[StatsCIByLevel], level: Int)(implicit jobId: JobId): JsValue = {
     val sc = statsCIRDD.sparkContext
-    sc.setJobDescription("getCIsByLevel." + jobId.id)
+    sc.setJobDescription(jobId.id + ".getCIsByLevel")
     val CIsRDD = statsCIRDD.filter { case StatsCIByLevel(idxLevel, depth, stats) => depth == level }
     val CIs = CIsRDD.collect()
     sc.setJobDescription("")
@@ -214,7 +215,7 @@ class Bootstrap extends Serializable {
 
   def getResultsByGroupId(resultsRDD: RDD[ResultsByLevel], groupId: Int)(implicit jobId: JobId): JsValue = {
     val sc = resultsRDD.sparkContext
-    sc.setJobDescription("getResultsByGroupId." + jobId.id)
+    sc.setJobDescription(jobId.id + ".getResultsByGroupId")
     val resRDD = resultsRDD.filter { case ResultsByLevel(idxLevel, depth, results) => idxLevel == groupId }
     val res = resRDD.collect()
     sc.setJobDescription("")
@@ -223,7 +224,7 @@ class Bootstrap extends Serializable {
 
   def getResultsByLevel(resultsRDD: RDD[ResultsByLevel], level: Int)(implicit jobId: JobId): JsValue = {
     val sc = resultsRDD.sparkContext
-    sc.setJobDescription("getResultsByLevel." + jobId.id)
+    sc.setJobDescription(jobId.id + ".getResultsByLevel")
     val resRDD = resultsRDD.filter { case ResultsByLevel(idxLevel, depth, results) => depth == level }
     val res = resRDD.collect()
     sc.setJobDescription("")

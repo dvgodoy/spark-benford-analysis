@@ -1,7 +1,7 @@
 package com.dvgodoy.spark.benford.distributions
 
 import com.dvgodoy.spark.benford.constants._
-import com.dvgodoy.spark.benford.util.{FreqByLevel, StatsCIByLevel, DataByLevel}
+import com.dvgodoy.spark.benford.util.{DataByLevel, FreqByLevel, StatsCIByLevel}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 
@@ -16,7 +16,8 @@ class Benford extends Bootstrap {
     val momentsRDD = calcMomentsSamples(bootRDD)
     val statsRDD = calcStatsSamples(momentsRDD)
     val groupStatsRDD = groupStats(statsRDD)
-    calcStatsCIs(dataStatsRDD, groupStatsRDD, Array(0.975, 0.99))
+    val statsCIRDD = calcStatsCIs(dataStatsRDD, groupStatsRDD, Array(0.975, 0.99))
+    statsCIRDD
   }
 }
 
