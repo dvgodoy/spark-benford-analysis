@@ -1,7 +1,7 @@
 package com.dvgodoy.spark.benford.integration
 
 import com.dvgodoy.spark.benford.distributions.{Benford, Bootstrap}
-import com.dvgodoy.spark.benford.util.{DataByLevel, ResultsByLevel, StatsCIByLevel}
+import com.dvgodoy.spark.benford.util.{JobId, DataByLevel, ResultsByLevel, StatsCIByLevel}
 import org.apache.spark.rdd.RDD
 import play.api.libs.json._
 
@@ -13,6 +13,8 @@ class BenfordAnalysisSuite extends SparkSuite {
   protected var sampleRDD: RDD[StatsCIByLevel] = _
   protected var benfordRDD: RDD[StatsCIByLevel] = _
   protected var resultsRDD: RDD[ResultsByLevel] = _
+
+  implicit val jobId = JobId("test")
 
   override def loadAndProcessData(): Unit = {
     val numSamples = 1000
