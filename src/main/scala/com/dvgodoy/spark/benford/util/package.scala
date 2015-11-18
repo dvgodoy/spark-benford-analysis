@@ -13,30 +13,16 @@ import scala.collection.mutable.ListBuffer
 import scala.util.Try
 
 package object util {
-  private def matchAlphaCIs(ci1: Array[CI], ci2: Array[CI]): Array[(CI, Array[CI])] = {
-    for (ci <- ci1) yield (ci, ci2.filter { case CI(alpha, li, ui, lower, upper, t0) => alpha == ci.alpha })
-  }
-
-  private def findOverlap(stat: Array[Overlap], alphaParam: Double): Boolean = stat.filter { case Overlap(alpha, ov) => alpha == alphaParam }.map { case Overlap(alpha, ov) => ov }.head
-  private def findContain(stat: Array[Contain], alphaParam: Double): Boolean = stat.filter { case Contain(alpha, co) => alpha == alphaParam }.map { case Contain(alpha, co) => co }.head
-
-  private def findStatsResults(statsOv: StatsOverlap, statsCo: StatsContain, alphaParam: Double): StatsOC = {
-    val mean = OverlapContain(findOverlap(statsOv.mean, alphaParam), findContain(statsCo.mean, alphaParam))
-    val variance = OverlapContain(findOverlap(statsOv.variance, alphaParam), findContain(statsCo.variance, alphaParam))
-    val skewness = OverlapContain(findOverlap(statsOv.skewness, alphaParam), findContain(statsCo.skewness, alphaParam))
-    val kurtosis = OverlapContain(findOverlap(statsOv.kurtosis, alphaParam), findContain(statsCo.kurtosis, alphaParam))
-    StatsOC(mean, variance, skewness, kurtosis)
-  }
-
-  private def findRegsResults(regsOv: RegsOverlap, regsCo: RegsContain, alphaParam: Double): RegsOC = {
-    val pearson = OverlapContain(findOverlap(regsOv.pearson, alphaParam), findContain(regsCo.pearson, alphaParam))
-    val alpha0 = OverlapContain(findOverlap(regsOv.alpha0, alphaParam), findContain(regsCo.alpha0, alphaParam))
-    val alpha1 = OverlapContain(findOverlap(regsOv.alpha1, alphaParam), findContain(regsCo.alpha1, alphaParam))
-    val beta0 = OverlapContain(findOverlap(regsOv.beta0, alphaParam), findContain(regsCo.beta0, alphaParam))
-    val beta1 = OverlapContain(findOverlap(regsOv.beta1, alphaParam), findContain(regsCo.beta1, alphaParam))
-    RegsOC(pearson, alpha0, alpha1, beta0, beta1)
-  }
-
+  /*
+  #
+  # Function ported and adapted from R package "boot: Bootstrap Functions (Originally by Angelo Canty for S)"
+  #
+  #  Interpolation on the normal quantile scale.  For a non-integer
+  #  order statistic this function interpolates between the surrounding
+  #  order statistics using the normal quantile scale.  See equation
+  #  5.8 of Davison and Hinkley (1997)
+  #
+  */
   private def normInter(tParam: Array[Double], alphaParam: Array[Double]): DenseMatrix[Double] = {
     val t = DenseVector(tParam.filter(!_.isInfinite))
     val alpha = DenseVector(alphaParam)
@@ -63,6 +49,17 @@ package object util {
     DenseMatrix.horzcat(rk.toDenseMatrix.reshape(alphaParam.length/2,2), out.toDenseMatrix.reshape(alphaParam.length/2,2))
   }
 
+  /*
+  #
+  # Function ported and adapted from R package "boot: Bootstrap Functions (Originally by Angelo Canty for S)"
+  #
+  #  Adjusted Percentile (BCa) Confidence interval method.  This method
+  #  uses quantities calculated from the empirical influence values to
+  #  improve on the precentile interval.  Usually the required order
+  #  statistics for this method will not be integers and so norm.inter
+  #  is used to find them.
+  #
+  */
   private def bcaCI(conf: Array[Double], t0: Double, tParam: Array[Double]): Array[CI] = {
     return if (tParam.length > 0) {
       val t = tParam.filter(!_.isInfinite)
@@ -86,16 +83,28 @@ package object util {
     }
   }
 
-  private def time[A](a: => A, n:Int) = {
-    var times = List[Long]()
-    for (_ <- 1 to n) {
-      val now = System.nanoTime
-      val res = a
-      times :::= List(System.nanoTime - now)
-    }
-    val result = times.sum / n
-    println("%d microseconds".format(result / 1000))
-    result
+  private def matchAlphaCIs(ci1: Array[CI], ci2: Array[CI]): Array[(CI, Array[CI])] = {
+    for (ci <- ci1) yield (ci, ci2.filter { case CI(alpha, li, ui, lower, upper, t0) => alpha == ci.alpha })
+  }
+
+  private def findOverlap(stat: Array[Overlap], alphaParam: Double): Boolean = stat.filter { case Overlap(alpha, ov) => alpha == alphaParam }.map { case Overlap(alpha, ov) => ov }.head
+  private def findContain(stat: Array[Contain], alphaParam: Double): Boolean = stat.filter { case Contain(alpha, co) => alpha == alphaParam }.map { case Contain(alpha, co) => co }.head
+
+  private def findStatsResults(statsOv: StatsOverlap, statsCo: StatsContain, alphaParam: Double): StatsOC = {
+    val mean = OverlapContain(findOverlap(statsOv.mean, alphaParam), findContain(statsCo.mean, alphaParam))
+    val variance = OverlapContain(findOverlap(statsOv.variance, alphaParam), findContain(statsCo.variance, alphaParam))
+    val skewness = OverlapContain(findOverlap(statsOv.skewness, alphaParam), findContain(statsCo.skewness, alphaParam))
+    val kurtosis = OverlapContain(findOverlap(statsOv.kurtosis, alphaParam), findContain(statsCo.kurtosis, alphaParam))
+    StatsOC(mean, variance, skewness, kurtosis)
+  }
+
+  private def findRegsResults(regsOv: RegsOverlap, regsCo: RegsContain, alphaParam: Double): RegsOC = {
+    val pearson = OverlapContain(findOverlap(regsOv.pearson, alphaParam), findContain(regsCo.pearson, alphaParam))
+    val alpha0 = OverlapContain(findOverlap(regsOv.alpha0, alphaParam), findContain(regsCo.alpha0, alphaParam))
+    val alpha1 = OverlapContain(findOverlap(regsOv.alpha1, alphaParam), findContain(regsCo.alpha1, alphaParam))
+    val beta0 = OverlapContain(findOverlap(regsOv.beta0, alphaParam), findContain(regsCo.beta0, alphaParam))
+    val beta1 = OverlapContain(findOverlap(regsOv.beta1, alphaParam), findContain(regsCo.beta1, alphaParam))
+    RegsOC(pearson, alpha0, alpha1, beta0, beta1)
   }
 
   protected case class Overlap(alpha: Double, overlaps: Boolean)
@@ -353,6 +362,7 @@ package object util {
     }
   }
   case class Group(idxLevel: Long, depth: Int, name: String, children: Array[Long])
+  case class JobId(id: String)
 
   implicit val FrequenciesWrites = new Writes[Frequencies] {
     def writes(frequency: Frequencies) = Json.obj(
@@ -536,5 +546,4 @@ package object util {
     (JsPath \ "children").read[Array[Long]]
   )(Group.apply _)
 
-  case class JobId(id: String)
 }

@@ -24,22 +24,6 @@ For further details on the procedures and the decision criteria, please refer to
 
 [SUH, I., HEADRICK, T.C.; MINABURO, S. An Effective and Efficient Analytic Technique: A Bootstrap Regression Procedure and Benford's Law. Journal of Forensic & Investigative Accounting, Vol. 3, n. 3, p.25-44, 2011.](http://epublications.marquette.edu/cgi/viewcontent.cgi?article=1045&context=account_fac)
 
-### Signal and Image Processing
-
-Benford's Law can also be used to detect weak peaks in signals and edges in images.
-
-For further details, please refer to:
-
-[BHOLE, G.; SHUKLA, A.; MAHESH, T.S. Benford Analysis: A useful paradigm for spectroscopic analysis](http://arxiv.org/abs/1408.5735)
-
-### Suspicious Behavior in Social Networks
-
-Another use of Benford's Law is the detection of suspiciously behaving nodes in social networks.
-
-For further details, please refer to:
-
-[GOLDBECK, J. Benford's Law Applies to Online Social Networks](http://journals.plos.org/plosone/article?id=10.1371/journal.pone.0135169)
-
 Installation
 ============
 
@@ -116,7 +100,7 @@ Your file should look like this:
 ```
 
 A test file is provided with the package and we point to it in this example:
-```
+```scala
 scala> val filePath = "./src/test/resources/datalevels.csv"
 ```
 
@@ -142,6 +126,49 @@ res0: Map[Long,(String, Int)] = Map(0 -> (L.1,0), 5 -> (L.1.B.3,2), 1 -> (L.1.A,
 scala> data.hierarchy
 res1: Map[Long,Array[Long]] = Map(0 -> Array(4, 1), 5 -> Array(-1), 1 -> Array(2, 3), 6 -> Array(-1), 2 -> Array(-1), 3 -> Array(-1), 4 -> Array(6, 5))
 ```
+This information is also available in JSON through the `getGroups` function:
+
+```scala
+scala> Json.prettyPrint(boot.getGroups(data))
+res0: String =
+[ {
+  "id" : 0,
+  "level" : 0,
+  "name" : "L.1",
+  "children" : [ 1, 4 ]
+}, {
+  "id" : 1,
+  "level" : 1,
+  "name" : "L.1.A",
+  "children" : [ 2, 3 ]
+}, {
+  "id" : 2,
+  "level" : 2,
+  "name" : "L.1.A.1",
+  "children" : [ -1 ]
+}, {
+  "id" : 3,
+  "level" : 2,
+  "name" : "L.1.A.2",
+  "children" : [ -1 ]
+}, {
+  "id" : 4,
+  "level" : 1,
+  "name" : "L.1.B",
+  "children" : [ 5, 6 ]
+}, {
+  "id" : 5,
+  "level" : 2,
+  "name" : "L.1.B.3",
+  "children" : [ -1 ]
+}, {
+  "id" : 6,
+  "level" : 2,
+  "name" : "L.1.B.4",
+  "children" : [ -1 ]
+} ]
+```
+
 
 You can also get information regarding frequencies of both first and second digits in your data:
 
@@ -165,7 +192,7 @@ Everything is set now! It is time to actually get the results!
 1- Confidence intervals by group ID:
 
 The structure of the JSON response is as follows:
-```
+```scala
 {
 "id": groupID,
 "level": level depth,
@@ -262,14 +289,14 @@ res0: String =
 ```scala
 scala> val level = 1
 level: Int = 1
-scala> val levelCIs = boot.getCIsByLevel(sampleRDD, 1)
+scala> val levelCIs = boot.getCIsByLevel(sampleRDD, level)
 levelCIs: play.api.libs.json.JsValue = [{"id":4,"level":1,"CIs":{"d1d2":{"n":400,"mean":[{"alpha":0.975,"li":15.6484978447,"ui":991.259801465,"lower":36.1330954577,"upper":41.8062554336,"t0":38.705},{"alpha":0.99,"li":6.9413770428,"ui":997.5537988299,"lower":35.9066747157,"upper":42.0099908581,"t0":38.705}],"variance":[{"alpha":0.975,"li":14.4202841466,"ui":990.1442415833,"lower":567.7315608856,"upper":752.8274641622,"t0":657.567975},{"alpha":0.99,"li":5.7577901905,"ui":996.6459593852,"lower":548.2048914919,"upper":763.1995041253,"t0":657.567975}],"skewness":[{"alpha":0.975,"li":16.5738822517,"ui":991.7914287015,"lower":0.613728507,"upper":1.0085163781,"t0":0.795359968},{"alpha":0.99,"li":7.171749893,"ui":997.6311316075,"lower":0.5913386751,"upper":1.0401580743,"t0":0.795359968}],"kurto...
 ```
 
 3- Results by group Id:
 
 The structure of the JSON response is as follows:
-```
+```scala
 {
 "id": groupID,
 "level": level depth,
@@ -368,12 +395,21 @@ levelResults: play.api.libs.json.JsValue = [{"id":4,"level":1,"results":{"n":400
 What's next
 ==============
 
-1- Detection of weak peaks in signal processing.
+### Signal and Image Processing
 
-2- Edge detection in image processing.
+Benford's Law can also be used to detect weak peaks in signals and edges in images.
 
-3- Detection of suspiciously behaving nodes in social networks.
+For further details, please refer to:
 
+[BHOLE, G.; SHUKLA, A.; MAHESH, T.S. Benford Analysis: A useful paradigm for spectroscopic analysis](http://arxiv.org/abs/1408.5735)
+
+### Suspicious Behavior in Social Networks
+
+Another use of Benford's Law is the detection of suspiciously behaving nodes in social networks.
+
+For further details, please refer to:
+
+[GOLDBECK, J. Benford's Law Applies to Online Social Networks](http://journals.plos.org/plosone/article?id=10.1371/journal.pone.0135169)
 
 Contributing
 ============
