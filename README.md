@@ -205,7 +205,7 @@ scala> val levelResults = boot.getResultsByLevel(resultsRDD, level)
 levelResults: play.api.libs.json.JsValue = [{"id":4,"level":1,"results":{"n":400,"statsDiag":true,"regsDiag":false,"d1d2":{"mean":{"overlaps":true,"contains":true},"variance":{"overlaps":true,"contains":true},"skewness":{"overlaps":true,"contains":true},"kurtosis":{"overlaps":true,"contains":true}},"d1":{"mean":{"overlaps":true,"contains":true},"variance":{"overlaps":true,"contains":true},"skewness":{"overlaps":true,"contains":true},"kurtosis":{"overlaps":true,"contains":true}},"d2":{"mean":{"overlaps":true,"contains":true},"variance":{"overlaps":true,"contains":true},"skewness":{"overlaps":true,"contains":true},"kurtosis":{"overlaps":true,"contains":true}},"reg":{"pearson":{"overlaps":true,"contains":true},"alpha0":{"overlaps":false,"contains":false},"alpha1":{"overlaps":false,"contain...
 ```
 
-A very detailed explanation of all JSON responses can be found [here](https://github.com/dvgodoy/spark-benford-analysis/Responses.md).
+A very detailed explanation of all JSON responses can be found [here](https://github.com/dvgodoy/spark-benford-analysis/blob/master/Responses.md).
 
 For a straightforward answer regarding the data being suspicious or not, you can call `getSuspiciousGroups` with any of the previous results:
 
