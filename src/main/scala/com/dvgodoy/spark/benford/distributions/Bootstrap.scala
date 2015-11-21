@@ -9,6 +9,8 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import play.api.libs.json._
 import scala.collection.mutable
+import play.api.libs.functional.syntax._
+import play.api.libs.json.Reads._
 
 class Bootstrap extends Serializable {
   private def rollToss(nOutcomes: Int, rand: RandBasis): (Int, Double) = {
@@ -201,7 +203,8 @@ class Bootstrap extends Serializable {
     val CIsRDD = statsCIRDD.filter { case StatsCIByLevel(idxLevel, depth, stats) => idxLevel == groupId }
     val CIs = CIsRDD.collect()
     sc.setJobDescription("")
-    Json.toJson(CIs)
+    val json = Json.toJson(CIs)
+    pruneCIs(json)
   }
 
   def getCIsByLevel(statsCIRDD: RDD[StatsCIByLevel], level: Int)(implicit jobId: JobId): JsValue = {
@@ -210,7 +213,8 @@ class Bootstrap extends Serializable {
     val CIsRDD = statsCIRDD.filter { case StatsCIByLevel(idxLevel, depth, stats) => depth == level }
     val CIs = CIsRDD.collect()
     sc.setJobDescription("")
-    Json.toJson(CIs)
+    val json = Json.toJson(CIs)
+    pruneCIs(json)
   }
 
   def getResultsByGroupId(resultsRDD: RDD[ResultsByLevel], groupId: Int)(implicit jobId: JobId): JsValue = {
@@ -219,7 +223,8 @@ class Bootstrap extends Serializable {
     val resRDD = resultsRDD.filter { case ResultsByLevel(idxLevel, depth, results) => idxLevel == groupId }
     val res = resRDD.collect()
     sc.setJobDescription("")
-    Json.toJson(res)
+    val json = Json.toJson(res)
+    pruneResults(json)
   }
 
   def getResultsByLevel(resultsRDD: RDD[ResultsByLevel], level: Int)(implicit jobId: JobId): JsValue = {
@@ -228,7 +233,8 @@ class Bootstrap extends Serializable {
     val resRDD = resultsRDD.filter { case ResultsByLevel(idxLevel, depth, results) => depth == level }
     val res = resRDD.collect()
     sc.setJobDescription("")
-    Json.toJson(res)
+    val json = Json.toJson(res)
+    pruneResults(json)
   }
 
   def getFrequenciesByGroupId(data: DataByLevel, groupId: Int): JsValue = {
@@ -246,8 +252,33 @@ class Bootstrap extends Serializable {
 
   def getGroups(data: DataByLevel): JsValue = {
     val groups = (data.levels.toList.sortBy(_._1) zip data.hierarchy.toList.sortBy(_._1))
-                .map{case ((idxLevel,(name,depth)),(idx,children)) => Group(idxLevel, depth, name, children.sorted)}
+                .map{case ((idxLevel,(name,depth)),(idx,children)) => Group(idxLevel, depth, name.substring(2), children.sorted)}
     Json.toJson(groups)
+  }
+
+  def getSuspiciousGroups(jsonResults: JsValue): JsValue = {
+    val statTransf = ((__ \ 'id).json.pick and (__ \ 'results \ 'statsDiag).json.pick) reduce
+    val statsSusp = jsonResults.as[List[JsValue]]
+        .map(_.transform(statTransf).get)
+        .map(r => (r(0).as[Int], r(1).as[Boolean]))
+        .filter{case (idxLevel, compliant) => !compliant}
+        .sorted
+        .map{case (idxLevel, compliant) => JsNumber(idxLevel)}.toSeq
+
+    val regsFilter = (__ \ 'results \ 'n).json.pick
+    val regsTransf = ((__ \ 'id).json.pick and (__ \ 'results \ 'regsDiag).json.pick) reduce
+    val regsSusp = jsonResults.as[List[JsValue]]
+        .filter(_.transform(regsFilter).get.as[Int] >= 1000)
+        .map(_.transform(regsTransf).get)
+        .map(r => (r(0).as[Int], r(1).as[Boolean]))
+        .filter{case (idxLevel, compliant) => !compliant}
+        .sorted
+        .map{case (idxLevel, compliant) => JsNumber(idxLevel)}.toSeq
+
+    Json.obj(
+      "stats" -> JsArray(statsSusp),
+      "regs" -> JsArray(regsSusp)
+    )
   }
 }
 

@@ -29,11 +29,19 @@ Installation
 
 To include this package in your Spark Application:
 
-1- Download this repository.
+1- Clone this repository with `git clone https://github.com/dvgodoy/spark-benford-analysis.git`.
 
 2- Build an uberjar containing all dependencies with `sbt assembly`.
 
 3- Include the uberjar `spark-benford-analysis-assembly-0.0.1-SNAPSHOT.jar` both in the `--jars` and `--driver-class-path` parameters of `spark-submit`.
+
+Alternatively you may add the following lines to your sbt build file:
+
+```scala
+resolvers += "jitpack" at "https://jitpack.io"
+
+libraryDependencies += "com.github.dvgodoy" % "spark-benford-analysis" % "-SNAPSHOT"
+```
 
 ### spark-shell, pyspark, or spark-submit
 
@@ -88,14 +96,18 @@ Next you should name your Spark Jobs by creating an implicit parameter of the Jo
 scala> implicit val jobId = JobId("test")
 ```
 
-Then you should point to the data you want to analyze. It must be a CSV file containing the values in the first column and the hierarchical structure associated with those values in the columns that follow, from top-level in the left-most column to bottom-level in the right-most column. Please note that the hierarchical structure is NOT expected to be numeric.
+Then you should point to the data you want to analyze. It must be a CSV file containing the values in the first column.
 
-Your file should look like this:
+If your values have an associated hierarchical structure (for instance, departments and sub-departments in a company), you can take advantage of the ***Benford Analysis for Spark drill-down capability***, that is, you can test your accounting data for different levels of granularity.
+
+To include the structure of your data, insert it in the columns that follow the values, from top-level in the left-most column to bottom-level in the right-most column. Please note that the hierarchical structure is NOT expected to be numeric.
+
+Then your file should look like this:
 
 ```
-10.35,TOPLEVEL,SUBLEVEL 1,SUBSUBLEVEL 1.1
-128.17,TOPLEVEL,SUBLEVEL 1,SUBSUBLEVEL 1.2
-8712.33,TOPLEVEL,SUBLEVEL 2,SUBSUBLEVEL 2.1
+10.35,COMPANY NAME,DEPARTMENT A,SUB-DEPARTMENT A.1,...
+128.17,COMPANY NAME,DEPARTMENT A,SUB-DEPARTMENT A.2,...
+8712.33,COMPANY NAME,DEPARTMENT B,SUB-DEPARTMENT B.1,...
 ...
 ```
 
@@ -111,22 +123,7 @@ scala> val data =  boot.loadData(sc, filePath)
 data: com.dvgodoy.spark.benford.util.DataByLevel = DataByLevel(Map(0 -> (L.1,0), 5 -> (L.1.B.3,2), 1 -> (L.1.A,1), 6 -> (L.1.B.4,2), 2 -> (L.1.A.1,2), 3 -> (L.1.A.2,2), 4 -> (L.1.B,1)),Map(0 -> [J@181098bf, 5 -> [J@632b5c79, 1 -> [J@6a552721, 6 -> [J@3815a7d1, 2 -> [J@24dc150c, 3 -> [J@1d2d4d7a, 4 -> [J@5e020dd1),[Lcom.dvgodoy.spark.benford.util.package$FreqByLevel;@4bbc02ef,MapPartitionsRDD[27] at map at Bootstrap.scala:141)
 ```
 
-It returns a `DataByLevel` class with contains information regarding:
-
-1- all the unique combinations (groups) of levels in the data (map where keys are generated unique IDs associated with each combination, values contain both generated name by concatenation of level names and the depth of the level):
-
-```scala
-scala> data.levels
-res0: Map[Long,(String, Int)] = Map(0 -> (L.1,0), 5 -> (L.1.B.3,2), 1 -> (L.1.A,1), 6 -> (L.1.B.4,2), 2 -> (L.1.A.1,2), 3 -> (L.1.A.2,2), 4 -> (L.1.B,1))
-```
-
-2- hierachical structure of all groups (map from each group to its children):
-
-```scala
-scala> data.hierarchy
-res1: Map[Long,Array[Long]] = Map(0 -> Array(4, 1), 5 -> Array(-1), 1 -> Array(2, 3), 6 -> Array(-1), 2 -> Array(-1), 3 -> Array(-1), 4 -> Array(6, 5))
-```
-This information is also available in JSON through the `getGroups` function:
+The unique group IDs generated for each different combination of levels and its associated names and children can be found with:
 
 ```scala
 scala> Json.prettyPrint(boot.getGroups(data))
@@ -134,41 +131,40 @@ res0: String =
 [ {
   "id" : 0,
   "level" : 0,
-  "name" : "L.1",
+  "name" : "1",
   "children" : [ 1, 4 ]
 }, {
   "id" : 1,
   "level" : 1,
-  "name" : "L.1.A",
+  "name" : "1.A",
   "children" : [ 2, 3 ]
 }, {
   "id" : 2,
   "level" : 2,
-  "name" : "L.1.A.1",
+  "name" : "1.A.1",
   "children" : [ -1 ]
 }, {
   "id" : 3,
   "level" : 2,
-  "name" : "L.1.A.2",
+  "name" : "1.A.2",
   "children" : [ -1 ]
 }, {
   "id" : 4,
   "level" : 1,
-  "name" : "L.1.B",
+  "name" : "1.B",
   "children" : [ 5, 6 ]
 }, {
   "id" : 5,
   "level" : 2,
-  "name" : "L.1.B.3",
+  "name" : "1.B.3",
   "children" : [ -1 ]
 }, {
   "id" : 6,
   "level" : 2,
-  "name" : "L.1.B.4",
+  "name" : "1.B.4",
   "children" : [ -1 ]
 } ]
 ```
-
 
 You can also get information regarding frequencies of both first and second digits in your data:
 
@@ -189,208 +185,42 @@ scala> val resultsRDD = boot.calcResults(sampleRDD, benfordRDD)
 
 Everything is set now! It is time to actually get the results!
 
-1- Confidence intervals by group ID:
+You can either get results for each individual group or for all groups in a given level.
 
-The structure of the JSON response is as follows:
-```scala
-{
-"id": groupID,
-"level": level depth,
-// confidence intervals...
-"CIs": {
- // ... for the first two significant digits
- "d1d2": {
-  "n": number of valid lines/elements in the data,
-  // estimated parameters (mean, variance, skewness, kurtosis)
-  // with alpha values of 0.975 and 0.99
-  // corresponding to significance levels of 2.5% and 1.0%
-  "mean": [{
-   "alpha": (1 - significance level / 2),
-   "li": corresponding element index of lowerbound,
-   "ui": corresponding element index of upperbound,
-   "lower": CI lowerbound,
-   "upper": CI upperbound,
-   "t0": statistic computed on the original data
-   },{
-    ...
-   }],
-  "variance": [ ... ],
-  "skewness": [ ... ],
-  "kurtosis": [ ... ]
-  },
- // ... for the first significant digit only
- "d1": ...,
- // ... for the second significant digit only
- "d2": ...,
- // ... for pearson and bootstrap regression (alpha0, alpha1, beta0 and beta1) coefficients
- "r": {
-  "n": number of valid lines/elements in the data,
-  "pearson": [{
-   "alpha":
-   ...
-   "t0":
-   },{
-    ...
-   }],
-   "alpha0": [ ... ],
-   "alpha1": [ ... ],
-   "beta0": [ ... ],
-   "beta1": [ ... ],
-  }
- }
-}
-```
+For an individual group, use:
 
-In the example, you can get CIs for group 0 as follows:
 ```scala
 scala> val group = 0
 group: Int = 0
-scala> val groupCI = boot.getCIsByGroupId(sampleRDD, group)
-groupCI: play.api.libs.json.JsValue = [{"id":0,"level":0,"CIs":{"d1d2":{"n":1000,"mean":[{"alpha":0.975,"li":14.4132480208,"ui":990.2867752674,"lower":36.969261423,"upper":40.4787839229,"t0":38.568},{"alpha":0.99,"li":6.2925373461,"ui":997.1244903632,"lower":36.6742176029,"upper":40.7362248519,"t0":38.568}],"variance":[{"alpha":0.975,"li":20.9411036941,"ui":994.5710088844,"lower":583.5460349472,"upper":708.7116935144,"t0":632.625376},{"alpha":0.99,"li":10.3454310009,"ui":999.1168446586,"lower":575.1564526836,"upper":717.8026922609,"t0":632.625376}],"skewness":[{"alpha":0.975,"li":19.6723637771,"ui":993.4595448131,"lower":0.7079945559,"upper":0.9463749095,"t0":0.8168660437},{"alpha":0.99,"li":8.6863874261,"ui":998.3113392204,"lower":0.6961341567,"upper":0.9615797289,"t0":0.8168660437}],"...
-scala> Json.prettyPrint(groupCI)
-res0: String =
-[ {
-  "id" : 0,
-  "level" : 0,
-  "CIs" : {
-    "d1d2" : {
-      "n" : 1000,
-      "mean" : [ {
-        "alpha" : 0.975,
-        "li" : 14.4132480208,
-        "ui" : 990.2867752674,
-        "lower" : 36.969261423,
-        "upper" : 40.4787839229,
-        "t0" : 38.568
-      }, {
-        "alpha" : 0.99,
-        "li" : 6.2925373461,
-        "ui" : 997.1244903632,
-        "lower" : 36.6742176029,
-        "upper" : 40.7362248519,
-        "t0" : 38.568
-      } ],
-      "variance" : [ {
-        "alpha" : 0.975,
-        "li" : 20.9411036941,
-        "ui" : 994.5710088844,
-        "lower" : 583.5460349472,
-        "upper" : 708.7116935144,
-        "t0" : 632.625376
-      }, {
-        "alpha" : 0.99,
-        "li" : 10.3454310009,
-        "ui" : 999.1168446586,
-        "lower" : 57...
+scala> val groupResults = boot.getResultsByGroupId(resultsRDD, group)
+groupResults: play.api.libs.json.JsValue = [{"id":0,"level":0,"results":{"n":1000,"statsDiag":true,"regsDiag":true,"d1d2":{"mean":{"overlaps":true,"contains":true},"variance":{"overlaps":true,"contains":true},"skewness":{"overlaps":true,"contains":true},"kurtosis":{"overlaps":true,"contains":true}},"d1":{"mean":{"overlaps":true,"contains":true},"variance":{"overlaps":true,"contains":true},"skewness":{"overlaps":true,"contains":true},"kurtosis":{"overlaps":true,"contains":true}},"d2":{"mean":{"overlaps":true,"contains":true},"variance":{"overlaps":true,"contains":true},"skewness":{"overlaps":true,"contains":true},"kurtosis":{"overlaps":true,"contains":true}},"reg":{"pearson":{"overlaps":true,"contains":true},"alpha0":{"overlaps":true,"contains":true},"alpha1":{"overlaps":true,"contains":...
 ```
 
+For all groups in a given level, use:
 
-2- Confidence intervals by level (returns an array of CIs, one for each group in a given level)
 ```scala
 scala> val level = 1
 level: Int = 1
-scala> val levelCIs = boot.getCIsByLevel(sampleRDD, level)
-levelCIs: play.api.libs.json.JsValue = [{"id":4,"level":1,"CIs":{"d1d2":{"n":400,"mean":[{"alpha":0.975,"li":15.6484978447,"ui":991.259801465,"lower":36.1330954577,"upper":41.8062554336,"t0":38.705},{"alpha":0.99,"li":6.9413770428,"ui":997.5537988299,"lower":35.9066747157,"upper":42.0099908581,"t0":38.705}],"variance":[{"alpha":0.975,"li":14.4202841466,"ui":990.1442415833,"lower":567.7315608856,"upper":752.8274641622,"t0":657.567975},{"alpha":0.99,"li":5.7577901905,"ui":996.6459593852,"lower":548.2048914919,"upper":763.1995041253,"t0":657.567975}],"skewness":[{"alpha":0.975,"li":16.5738822517,"ui":991.7914287015,"lower":0.613728507,"upper":1.0085163781,"t0":0.795359968},{"alpha":0.99,"li":7.171749893,"ui":997.6311316075,"lower":0.5913386751,"upper":1.0401580743,"t0":0.795359968}],"kurto...
-```
-
-3- Results by group Id:
-
-The structure of the JSON response is as follows:
-```scala
-{
-"id": groupID,
-"level": level depth,
-"results": {
-  "n": number of valid lines/elements in the data,
-  // for a diagnosis based on the estimated parameters (mean, variance...)...
-  "statsDiag": FALSE if you CANNOT infer that your data is a sample drawn from a sample distribution => (possible fraud), TRUE otherwise,
-  // for a diagnosis based on the estimated coefficientes (alpha0, alpha1...)...
-  "regsDiag": FALSE if you CANNOT infer that your data is a sample drawn from a sample distribution => (possible fraud), TRUE otherwise,
-  // Overlapping /Containing results...
-  // ... for the first two significant digits
-  "d1d2": {
-    "mean": {
-      "overlaps": TRUE if CIs estimated based on your data's and Benford's distributions overlap,
-      "contains": TRUE if CI estimated based on your data's distribution contains actual Benford parameter,
-     },
-    "variance": { ... },
-    "skewness": { ... },
-    "kurtosis": { ... }
-   },{
-  // ... for the first significant digit only
-  "d1": { ... },
-  // ... for the second significant digit only
-  "d2": { ... },
-  // ... for pearson and bootstrap regression (alpha0, alpha1, beta0 and beta1) coefficients
-  "reg": {
-    "pearson": {
-      "overlaps":
-      "contains":
-     },
-    "alpha0": { ... },
-    "alpha1": { ... },
-    "beta0": { ... },
-    "beta1": { ... }
-   }
- }
-}
-```
-
-In the example, you can get results for group 0 as follows:
-
-```scala
-scala> val groupResults = boot.getResultsByGroupId(resultsRDD, group)
-groupResults: play.api.libs.json.JsValue = [{"id":0,"level":0,"results":{"n":1000,"statsDiag":true,"regsDiag":true,"d1d2":{"mean":{"overlaps":true,"contains":true},"variance":{"overlaps":true,"contains":true},"skewness":{"overlaps":true,"contains":true},"kurtosis":{"overlaps":true,"contains":true}},"d1":{"mean":{"overlaps":true,"contains":true},"variance":{"overlaps":true,"contains":true},"skewness":{"overlaps":true,"contains":true},"kurtosis":{"overlaps":true,"contains":true}},"d2":{"mean":{"overlaps":true,"contains":true},"variance":{"overlaps":true,"contains":true},"skewness":{"overlaps":true,"contains":true},"kurtosis":{"overlaps":true,"contains":true}},"reg":{"pearson":{"overlaps":true,"contains":true},"alpha0":{"overlaps":true,"contains":true},"alpha1":{"overlaps":true,"contains":...
-scala> Json.prettyPrint(groupResults)
-res0: String =
-[ {
-  "id" : 0,
-  "level" : 0,
-  "results" : {
-    "n" : 1000,
-    "statsDiag" : true,
-    "regsDiag" : true,
-    "d1d2" : {
-      "mean" : {
-        "overlaps" : true,
-        "contains" : true
-      },
-      "variance" : {
-        "overlaps" : true,
-        "contains" : true
-      },
-      "skewness" : {
-        "overlaps" : true,
-        "contains" : true
-      },
-      "kurtosis" : {
-        "overlaps" : true,
-        "contains" : true
-      }
-    },
-    "d1" : {
-      "mean" : {
-        "overlaps" : true,
-        "contains" : true
-      },
-      "variance" : {
-        "overlaps" : true,
-        "contains" : true
-      },
-      "skewness" : {
-        "overlaps" : true,
-        "contains" : true
-      },
-      "kurtosis" : {
-        "overlaps" : true,
-        "contain...
-```
-
-Results by level:
-```scala
 scala> val levelResults = boot.getResultsByLevel(resultsRDD, level)
 levelResults: play.api.libs.json.JsValue = [{"id":4,"level":1,"results":{"n":400,"statsDiag":true,"regsDiag":false,"d1d2":{"mean":{"overlaps":true,"contains":true},"variance":{"overlaps":true,"contains":true},"skewness":{"overlaps":true,"contains":true},"kurtosis":{"overlaps":true,"contains":true}},"d1":{"mean":{"overlaps":true,"contains":true},"variance":{"overlaps":true,"contains":true},"skewness":{"overlaps":true,"contains":true},"kurtosis":{"overlaps":true,"contains":true}},"d2":{"mean":{"overlaps":true,"contains":true},"variance":{"overlaps":true,"contains":true},"skewness":{"overlaps":true,"contains":true},"kurtosis":{"overlaps":true,"contains":true}},"reg":{"pearson":{"overlaps":true,"contains":true},"alpha0":{"overlaps":false,"contains":false},"alpha1":{"overlaps":false,"contain...
 ```
+
+A very detailed explanation of all JSON responses can be found [here](https://github.com/dvgodoy/spark-benford-analysis/Responses.md).
+
+For a straightforward answer regarding the data being suspicious or not, you can call `getSuspiciousGroups` with any of the previous results:
+
+```scala
+scala> getSuspiciousGroups(groupResults)
+res0: play.api.libs.json.JsValue = {"stats":[],"regs":[]}
+scala> getSuspiciousGroups(levelResults)
+res1: play.api.libs.json.JsValue = {"stats":[],"regs":[]}
+```
+
+All suspicious groups are listed under the corresponding criteria under which they were classified as suspicious. In the example, our data complies with Benford's Law and therefore is not classified as suspicious.
+
+The "stats" criteria follows Suh and Headrick (2010) and is based on the overlapping of confidence intervals for mean, variance, skewness, kurtosis and Pearson correlation.
+
+The "regs" criteria follows Suh, Headrick and Minaburo (2011) and is based on the overlapping of confidence intervals for coefficients of regressions over first and second digits.
 
 What's next
 ==============

@@ -349,6 +349,36 @@ package object util {
 
   protected[benford] def parseDouble(s: String): Option[Double] = Try { s.toDouble }.toOption
 
+  protected[benford] def pruneResults(json: JsValue): JsValue = {
+    val regTransf = (__ \ 'results \ 'regsDiag).json.prune
+    val alpha0Transf = (__ \ 'results \ 'reg \ 'alpha0).json.prune
+    val alpha1Transf = (__ \ 'results \ 'reg \ 'alpha1).json.prune
+    val beta0Transf = (__ \ 'results \ 'reg \ 'beta0).json.prune
+    val beta1Transf = (__ \ 'results \ 'reg \ 'beta1).json.prune
+    JsArray(json.as[List[JsObject]]
+      .map(x => if (x.transform((__ \ 'results \ 'n).json.pick).get.as[Int] < 1000)
+        x.transform(regTransf).get
+          .transform(alpha0Transf).get
+          .transform(alpha1Transf).get
+          .transform(beta0Transf).get
+          .transform(beta1Transf).get
+      else x))
+  }
+
+  protected[benford] def pruneCIs(json: JsValue): JsValue = {
+    val alpha0Transf = (__ \ 'CIs \ 'r \ 'alpha0).json.prune
+    val alpha1Transf = (__ \ 'CIs \ 'r \ 'alpha1).json.prune
+    val beta0Transf = (__ \ 'CIs \ 'r \ 'beta0).json.prune
+    val beta1Transf = (__ \ 'CIs \ 'r \ 'beta1).json.prune
+    JsArray(json.as[List[JsObject]]
+      .map(x => if (x.transform((__ \ 'CIs \ 'r \ 'n).json.pick).get.as[Int] < 1000)
+        x.transform(alpha0Transf).get
+          .transform(alpha1Transf).get
+          .transform(beta0Transf).get
+          .transform(beta1Transf).get
+      else x))
+  }
+
   case class DataByLevel(levels: Map[Long, (String, Int)], hierarchy: Map[Long, Array[Long]], freqByLevel: Array[FreqByLevel] ,dataByLevelsRDD: RDD[Level])
   case class ResultsByLevel(idxLevel: Long, depth: Int, results: Results)
   case class FreqByLevel(idxLevel: Long, freq: Frequencies)
