@@ -118,9 +118,9 @@ The structure of the JSON response is as follows:
 "results": {
   "n": number of valid lines/elements in the data,
   // for a diagnosis based on the estimated parameters (mean, variance...)...
-  "statsDiag": FALSE if you CANNOT infer that your data is a sample drawn from a sample distribution => (possible fraud), TRUE otherwise,
+  "statsDiag": -1 if you CANNOT infer that your data is a sample drawn from a sample distribution => (possible fraud), 1 otherwise,
   // for a diagnosis based on the estimated coefficientes (alpha0, alpha1...)...
-  "regsDiag": FALSE if you CANNOT infer that your data is a sample drawn from a sample distribution => (possible fraud), TRUE otherwise,
+  "regsDiag": -1 if you CANNOT infer that your data is a sample drawn from a sample distribution => (possible fraud), 0 if it is undefined and 1 otherwise,
   // Overlapping /Containing results...
   // ... for the first two significant digits
   "d1d2": {
@@ -163,8 +163,8 @@ res0: String =
   "level" : 0,
   "results" : {
     "n" : 1000,
-    "statsDiag" : true,
-    "regsDiag" : true,
+    "statsDiag" : 1,
+    "regsDiag" : 1,
     "d1d2" : {
       "mean" : {
         "overlaps" : true,
@@ -207,5 +207,5 @@ It returns an array of Results, one for each group in a given level.
 
 ```scala
 scala> val levelResults = boot.getResultsByLevel(resultsRDD, level)
-levelResults: play.api.libs.json.JsValue = [{"id":4,"level":1,"results":{"n":400,"statsDiag":true,"regsDiag":false,"d1d2":{"mean":{"overlaps":true,"contains":true},"variance":{"overlaps":true,"contains":true},"skewness":{"overlaps":true,"contains":true},"kurtosis":{"overlaps":true,"contains":true}},"d1":{"mean":{"overlaps":true,"contains":true},"variance":{"overlaps":true,"contains":true},"skewness":{"overlaps":true,"contains":true},"kurtosis":{"overlaps":true,"contains":true}},"d2":{"mean":{"overlaps":true,"contains":true},"variance":{"overlaps":true,"contains":true},"skewness":{"overlaps":true,"contains":true},"kurtosis":{"overlaps":true,"contains":true}},"reg":{"pearson":{"overlaps":true,"contains":true},"alpha0":{"overlaps":false,"contains":false},"alpha1":{"overlaps":false,"contain...
+levelResults: play.api.libs.json.JsValue = [{"id":4,"level":1,"results":{"n":400,"statsDiag":1,"d1d2":{"mean":{"overlaps":true,"contains":true},"variance":{"overlaps":true,"contains":true},"skewness":{"overlaps":true,"contains":true},"kurtosis":{"overlaps":true,"contains":true}},"d1":{"mean":{"overlaps":true,"contains":true},"variance":{"overlaps":true,"contains":true},"skewness":{"overlaps":true,"contains":true},"kurtosis":{"overlaps":true,"contains":true}},"d2":{"mean":{"overlaps":true,"contains":true},"variance":{"overlaps":true,"contains":true},"skewness":{"overlaps":true,"contains":true},"kurtosis":{"overlaps":true,"contains":true}},"reg":{"pearson":{"overlaps":true,"contains":true}}}]
 ```
