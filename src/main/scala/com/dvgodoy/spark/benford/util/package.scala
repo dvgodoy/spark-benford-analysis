@@ -116,7 +116,7 @@ package object util {
   protected case class OverlapDigits(n: Double, d1d2: StatsOverlap, d1: StatsOverlap, d2: StatsOverlap, r: RegsOverlap)
   protected case class ContainDigits(n: Double, d1d2: StatsContain, d1: StatsContain, d2: StatsContain, r: RegsContain)
 
-  protected case class Results(n: Double, stats: Boolean, regs: Boolean, d1d2: StatsOC, d1: StatsOC, d2: StatsOC, r: RegsOC)
+  protected case class Results(n: Double, stats: Int, regs: Int, d1d2: StatsOC, d1: StatsOC, d2: StatsOC, r: RegsOC)
 
   protected case class RegsOC(pearsonOC: OverlapContain, alpha0: OverlapContain, alpha1: OverlapContain, beta0: OverlapContain, beta1: OverlapContain) {
     def count: Int = Array(alpha0.result, alpha1.result, beta0.result, beta1.result).map(if (_) 1 else 0).sum
@@ -324,8 +324,8 @@ package object util {
       val doubleDigitsCount = statsOCD1D2.count
       val singleDigitsCount = statsOCD1.count + statsOCD2.count
 
-      val paramFinal = if (overlap.n >= 1000 && doubleDigitsCount == 4) true else if (singleDigitsCount == 8) true else regsOC.pearson
-      val regFinal = overlap.n >= 1000 && regCount == 4
+      val paramFinal = if (overlap.n >= 1000 && doubleDigitsCount == 4) 1 else if (singleDigitsCount == 8) 1 else if (regsOC.pearson) 1 else 0
+      val regFinal = if (overlap.n < 1000 || (regCount > 0 && regCount < 4)) 0 else if (regCount == 4) 1 else -1
       ResultsByLevel(idxLevel, depth, Results(overlap.n, paramFinal, regFinal, statsOCD1D2, statsOCD1, statsOCD2, regsOC))
     }
   }
@@ -532,8 +532,8 @@ package object util {
 
   implicit val ResultsWrites: Writes[Results] = (
     (JsPath \ "n").write[Double] and
-    (JsPath \ "statsDiag").write[Boolean] and
-    (JsPath \ "regsDiag").write[Boolean] and
+    (JsPath \ "statsDiag").write[Int] and
+    (JsPath \ "regsDiag").write[Int] and
     (JsPath \ "d1d2").write[StatsOC] and
     (JsPath \ "d1").write[StatsOC] and
     (JsPath \ "d2").write[StatsOC] and
@@ -542,8 +542,8 @@ package object util {
 
   implicit val ResultsReads: Reads[Results] = (
     (JsPath \ "n").read[Double] and
-    (JsPath \ "stats").read[Boolean] and
-    (JsPath \ "regs").read[Boolean] and
+    (JsPath \ "statsDiag").read[Int] and
+    (JsPath \ "regsDiag").read[Int] and
     (JsPath \ "d1d2").read[StatsOC] and
     (JsPath \ "d1").read[StatsOC] and
     (JsPath \ "d2").read[StatsOC] and

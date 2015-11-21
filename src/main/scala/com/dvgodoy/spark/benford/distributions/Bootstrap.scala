@@ -260,8 +260,8 @@ class Bootstrap extends Serializable {
     val statTransf = ((__ \ 'id).json.pick and (__ \ 'results \ 'statsDiag).json.pick) reduce
     val statsSusp = jsonResults.as[List[JsValue]]
         .map(_.transform(statTransf).get)
-        .map(r => (r(0).as[Int], r(1).as[Boolean]))
-        .filter{case (idxLevel, compliant) => !compliant}
+        .map(r => (r(0).as[Int], r(1).as[Int]))
+        .filter{case (idxLevel, compliant) => compliant == -1}
         .sorted
         .map{case (idxLevel, compliant) => JsNumber(idxLevel)}.toSeq
 
@@ -270,8 +270,8 @@ class Bootstrap extends Serializable {
     val regsSusp = jsonResults.as[List[JsValue]]
         .filter(_.transform(regsFilter).get.as[Int] >= 1000)
         .map(_.transform(regsTransf).get)
-        .map(r => (r(0).as[Int], r(1).as[Boolean]))
-        .filter{case (idxLevel, compliant) => !compliant}
+        .map(r => (r(0).as[Int], r(1).as[Int]))
+        .filter{case (idxLevel, compliant) => compliant == -1}
         .sorted
         .map{case (idxLevel, compliant) => JsNumber(idxLevel)}.toSeq
 
