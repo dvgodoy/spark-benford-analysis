@@ -256,6 +256,14 @@ class Bootstrap extends Serializable {
     Json.toJson(groups)
   }
 
+  def getExactBenfordParams: JsValue = {
+    Json.toJson(BenfordStatsDigits)
+  }
+
+  def getExactBenfordProbs: JsValue = {
+    Json.toJson(Frequencies(1000, BenfordProbabilitiesD1D2, BenfordProbabilitiesD1, BenfordProbabilitiesD2))
+  }
+
   def getSuspiciousGroups(jsonResults: JsValue): JsValue = {
     val statTransf = ((__ \ 'id).json.pick and (__ \ 'results \ 'statsDiag).json.pick) reduce
     val statsSusp = jsonResults.as[List[JsValue]]

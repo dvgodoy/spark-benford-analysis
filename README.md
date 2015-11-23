@@ -33,7 +33,7 @@ To include this package in your Spark Application:
 
 2- Build an uberjar containing all dependencies with `sbt assembly`.
 
-3- Include the uberjar `spark-benford-analysis-assembly-0.0.1-SNAPSHOT.jar` both in the `--jars` and `--driver-class-path` parameters of `spark-submit`.
+3- Include the uberjar `spark-benford-analysis-assembly-0.0.1-SNAPSHOT.jar` both in the `--jars` and `--driver-class-path` parameters of `spark-shell`.
 
 Alternatively you may add the following lines to your sbt build file:
 

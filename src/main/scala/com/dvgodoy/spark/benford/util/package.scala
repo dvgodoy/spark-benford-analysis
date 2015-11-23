@@ -576,4 +576,52 @@ package object util {
     (JsPath \ "children").read[Array[Long]]
   )(Group.apply _)
 
+  implicit val StatsWrites: Writes[Stats] = (
+    (JsPath \ "n").write[Double] and
+    (JsPath \ "mean").write[ListBuffer[Double]] and
+    (JsPath \ "variance").write[ListBuffer[Double]] and
+    (JsPath \ "skewness").write[ListBuffer[Double]] and
+    (JsPath \ "kurtosis").write[ListBuffer[Double]]
+  )(unlift(Stats.unapply))
+
+  implicit val StatsReads: Reads[Stats] = (
+    (JsPath \ "n").read[Double] and
+    (JsPath \ "mean").read[ListBuffer[Double]] and
+    (JsPath \ "variance").read[ListBuffer[Double]] and
+    (JsPath \ "skewness").read[ListBuffer[Double]] and
+    (JsPath \ "kurtosis").read[ListBuffer[Double]]
+  )(Stats.apply _)
+
+  implicit val RegsWrites: Writes[Regs] = (
+    (JsPath \ "n").write[Double] and
+    (JsPath \ "pearson").write[ListBuffer[Double]] and
+    (JsPath \ "alpha0").write[ListBuffer[Double]] and
+    (JsPath \ "alpha1").write[ListBuffer[Double]] and
+    (JsPath \ "beta0").write[ListBuffer[Double]] and
+    (JsPath \ "beta1").write[ListBuffer[Double]]
+  )(unlift(Regs.unapply))
+
+  implicit val RegsReads: Reads[Regs] = (
+    (JsPath \ "n").read[Double] and
+    (JsPath \ "pearson").read[ListBuffer[Double]] and
+    (JsPath \ "alpha0").read[ListBuffer[Double]] and
+    (JsPath \ "alpha1").read[ListBuffer[Double]] and
+    (JsPath \ "beta0").read[ListBuffer[Double]] and
+    (JsPath \ "beta1").read[ListBuffer[Double]]
+  )(Regs.apply _)
+
+  implicit val StatsDigitsWrites: Writes[StatsDigits] = (
+    (JsPath \ "d1d2").write[Stats] and
+    (JsPath \ "d1").write[Stats] and
+    (JsPath \ "d2").write[Stats] and
+    (JsPath \ "r").write[Regs]
+  )(unlift(StatsDigits.unapply))
+
+  implicit val StatsDigitsReads: Reads[StatsDigits] = (
+    (JsPath \ "d1d2").read[Stats] and
+    (JsPath \ "d1").read[Stats] and
+    (JsPath \ "d2").read[Stats] and
+    (JsPath \ "r").read[Regs]
+  )(StatsDigits.apply _)
+
 }
