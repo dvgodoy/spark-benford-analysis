@@ -256,12 +256,23 @@ class Bootstrap extends Serializable {
     Json.toJson(groups)
   }
 
-  def getExactBenfordParams: JsValue = {
-    Json.toJson(BenfordStatsDigits)
+  def getTestsByGroupId(data: DataByLevel, groupId: Int): JsValue = {
+    val frequencies = data.freqByLevel.filter { case FreqByLevel(idxLevel, freq) => idxLevel == groupId }
+      .map{ case FreqByLevel(idxLevel, freq) => freq }
+    Json.obj(
+        "z" -> Json.toJson(frequencies.map(_.zTest)),
+        "chisquared" -> Json.toJson(frequencies.map(_.chiTest))
+    )
   }
 
-  def getExactBenfordProbs: JsValue = {
-    Json.toJson(Frequencies(1000, BenfordProbabilitiesD1D2, BenfordProbabilitiesD1, BenfordProbabilitiesD2))
+  def getTestsByLevel(data: DataByLevel, level: Int): JsValue = {
+    val groupIds = data.levels.filter{case (idxLevel, (name, depth)) => depth == level}.keySet
+    val frequencies = data.freqByLevel.filter { case FreqByLevel(idxLevel, freq) => groupIds.contains(idxLevel) }
+      .map{ case FreqByLevel(idxLevel, freq) => freq }
+    Json.obj(
+      "z" -> Json.toJson(frequencies.map(_.zTest)),
+      "chisquared" -> Json.toJson(frequencies.map(_.chiTest))
+    )
   }
 
   def getSuspiciousGroups(jsonResults: JsValue): JsValue = {

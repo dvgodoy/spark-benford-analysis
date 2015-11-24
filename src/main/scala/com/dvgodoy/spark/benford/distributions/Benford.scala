@@ -1,9 +1,10 @@
 package com.dvgodoy.spark.benford.distributions
 
 import com.dvgodoy.spark.benford.constants._
-import com.dvgodoy.spark.benford.util.{DataByLevel, FreqByLevel, StatsCIByLevel}
+import com.dvgodoy.spark.benford.util.{Frequencies, DataByLevel, FreqByLevel, StatsCIByLevel}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import play.api.libs.json.{Json, JsValue}
 
 class Benford extends Bootstrap {
   def calcBenfordCIs(sc: SparkContext, data: DataByLevel, numSamples: Int = 25000): RDD[StatsCIByLevel] = {
@@ -19,6 +20,15 @@ class Benford extends Bootstrap {
     val statsCIRDD = calcStatsCIs(dataStatsRDD, groupStatsRDD, Array(0.975, 0.99))
     statsCIRDD
   }
+
+  def getExactBenfordParams: JsValue = {
+    Json.toJson(BenfordStatsDigits)
+  }
+
+  def getExactBenfordProbs: JsValue = {
+    Json.toJson(Frequencies(1000, BenfordProbabilitiesD1D2, BenfordProbabilitiesD1, BenfordProbabilitiesD2))
+  }
+
 }
 
 object Benford {

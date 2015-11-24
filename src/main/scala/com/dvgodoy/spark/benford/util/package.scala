@@ -2,7 +2,8 @@ package com.dvgodoy.spark.benford
 
 import breeze.linalg._
 import breeze.numerics._
-import breeze.stats.distributions.Gaussian
+import breeze.stats.distributions.{Gaussian, ChiSquared}
+import com.dvgodoy.spark.benford.constants._
 import org.apache.spark.rdd.RDD
 import play.api.libs.json._
 import play.api.libs.json.Reads._
@@ -340,7 +341,41 @@ package object util {
       ContainDigits(d1d2.n, this.d1d2.contains(exact.d1d2), this.d1.contains(exact.d1), this.d2.contains(exact.d2), this.r.contains(exact.r))
   }
 
-  protected[benford] case class Frequencies(count: Int, freqD1D2: Array[Double], freqD1: Array[Double], freqD2: Array[Double])
+  case class TestResults(elements: Array[Int], stats: Array[Double], pvalues: Array[Double], rejected: Array[Int])
+  case class FreqTests(count: Int, testD1D2: TestResults, testD1: TestResults, testD2: TestResults)
+
+  private def calcZTest(elements: Array[Int], observed: Array[Double], expected: Array[Double], count: Int, alpha: Double): TestResults = {
+    val freqBenf = DenseVector(expected)
+    val freqSample = DenseVector(observed)
+    val correction = 1.0 / (2 * count)
+    val zalfa = (alpha / 2) / count
+    val diff = abs(freqBenf - freqSample).map(v => v - (if ((v - correction) > 0) correction else 0))
+    val zstat = diff :/ sqrt((freqBenf :* (1.0 :- freqBenf)) :/ count.toDouble)
+    val pval = zstat.map(v => 1 - Gaussian(0, 1).cdf(v))
+    val rejected = (DenseVector(elements)(pval :< zalfa)).toArray
+    TestResults(elements, zstat.toArray, pval.toArray, rejected)
+  }
+
+  private def calcChiSquareTest(observed: Array[Double], expected: Array[Double], count: Int, alpha: Double, degrees: Int): TestResults = {
+    val chistat = count.toDouble * sum(pow(DenseVector(observed) - DenseVector(expected),2) :/ DenseVector(expected))
+    val pval = ChiSquared(degrees).cdf(chistat)
+    TestResults(Array(0), Array(chistat), Array(pval), if (pval < alpha) Array(0) else Array())
+  }
+
+  protected[benford] case class Frequencies(count: Int, freqD1D2: Array[Double], freqD1: Array[Double], freqD2: Array[Double]) {
+    def zTest = FreqTests(
+      count,
+      calcZTest((10 to 99).toArray, freqD1D2, BenfordProbabilitiesD1D2, count, 0.05),
+      calcZTest((1 to 9).toArray, freqD1, BenfordProbabilitiesD1, count, 0.05),
+      calcZTest((0 to 9).toArray, freqD2, BenfordProbabilitiesD2, count, 0.05)
+    )
+    def chiTest = FreqTests(
+      count,
+      calcChiSquareTest(freqD1D2, BenfordProbabilitiesD1D2, count, 0.05, 89),
+      calcChiSquareTest(freqD1, BenfordProbabilitiesD1, count, 0.05, 8),
+      calcChiSquareTest(freqD2, BenfordProbabilitiesD2, count, 0.05, 9)
+    )
+  }
 
   protected[benford] case class Level(idxLevel: Long, depth: Int, idx: Long, value: Double, d1d2: Int)
 
@@ -623,5 +658,33 @@ package object util {
     (JsPath \ "d2").read[Stats] and
     (JsPath \ "r").read[Regs]
   )(StatsDigits.apply _)
+
+  implicit val TestResultsWrites: Writes[TestResults] = (
+    (JsPath \ "elements").write[Array[Int]] and
+    (JsPath \ "stats").write[Array[Double]] and
+    (JsPath \ "pvalues").write[Array[Double]] and
+    (JsPath \ "rejected").write[Array[Int]]
+  )(unlift(TestResults.unapply))
+
+  implicit val testResultsReads: Reads[TestResults] = (
+    (JsPath \ "elements").read[Array[Int]] and
+    (JsPath \ "stats").read[Array[Double]] and
+    (JsPath \ "pvalues").read[Array[Double]] and
+    (JsPath \ "rejected").read[Array[Int]]
+  )(TestResults.apply _)
+
+  implicit val FreqTestsWrites: Writes[FreqTests] = (
+    (JsPath \ "count").write[Int] and
+    (JsPath \ "testD1D2").write[TestResults] and
+    (JsPath \ "testD1").write[TestResults] and
+    (JsPath \ "testD2").write[TestResults]
+  )(unlift(FreqTests.unapply))
+
+  implicit val FreqTestsReads: Reads[FreqTests] = (
+    (JsPath \ "count").read[Int] and
+    (JsPath \ "testD1D2").read[TestResults] and
+    (JsPath \ "testD1").read[TestResults] and
+    (JsPath \ "testD2").read[TestResults]
+  )(FreqTests.apply _)
 
 }

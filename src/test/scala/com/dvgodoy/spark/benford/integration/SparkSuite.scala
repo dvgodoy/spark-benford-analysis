@@ -11,7 +11,7 @@ abstract class SparkSuite extends FunSuite with MustMatchers with BeforeAndAfter
   override protected def beforeAll(): Unit = {
     super.beforeAll()
     lazy val conf = new SparkConf(false)
-        .setMaster("local[*]")
+        .setMaster("local[2]")
         .setAppName("test")
     sc = SparkContext.getOrCreate(conf)
     loadAndProcessData()
