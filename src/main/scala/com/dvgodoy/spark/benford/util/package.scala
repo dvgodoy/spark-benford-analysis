@@ -187,6 +187,8 @@ package object util {
     def contains(exact: Double) = (exact >= this.lower) && (exact <= this.upper)
   }
 
+  protected[benford] case class AliasTable(modProb: DenseVector[Double], aliases: DenseVector[Int], nOutcomes: Int)
+
   protected[benford] def findD1D2(x: Double): Int = {
     assert(x != 0.0, "Zero value has no significant digits!")
     val absx = scala.math.abs(x)
@@ -299,7 +301,7 @@ package object util {
       x.beta1 ++ y.beta1)
   }
 
-  protected[benford] case class StatsDigits(d1d2: Stats, d1: Stats, d2: Stats, r: Regs) {
+  case class StatsDigits(d1d2: Stats, d1: Stats, d2: Stats, r: Regs) {
     def + (that: StatsDigits) = addStatsDigits(this, that)
     def calcBcaCI(conf: Array[Double], t0: StatsDigits) =
       CIDigits(this.d1d2.calcBcaCI(conf, t0.d1d2), this.d1.calcBcaCI(conf, t0.d1), this.d2.calcBcaCI(conf, t0.d2), this.r.calcBcaCI(conf, t0.r))
@@ -414,6 +416,7 @@ package object util {
       else x))
   }
 
+  case class BasicBoot(aliasMap: Map[Long, AliasTable], aliasMapBenf: Map[Long, AliasTable], bootTableRDD: RDD[(Long, (Int, (Int, Double)))])
   case class DataByLevel(levels: Map[Long, (String, Int)], hierarchy: Map[Long, Array[Long]], freqByLevel: Array[FreqByLevel] ,dataByLevelsRDD: RDD[Level])
   case class ResultsByLevel(idxLevel: Long, depth: Int, results: Results)
   case class FreqByLevel(idxLevel: Long, freq: Frequencies)
