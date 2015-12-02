@@ -153,7 +153,7 @@ class Bootstrap extends Serializable {
 
     val uniqLevelsRDD = levelsRDD.map { case (classif, value) => classif }.distinct().sortBy(identity).zipWithIndex()
     val uniqLevels = uniqLevelsRDD.collect()
-    val levels = uniqLevels.map{ case ((classif, depth), idx) => (idx -> (classif, depth))}.toMap
+    val levels = uniqLevels.map{ case ((classif, depth), idx) => (idx, (classif, depth))}.toMap
 
     val hierarchies = concatRDD.map { case (value, levels) => levels.map(_._1).toList }.distinct().collect()
     val idxHierarchies = hierarchies

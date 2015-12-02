@@ -4,6 +4,7 @@ import breeze.linalg._
 import breeze.numerics._
 import breeze.stats.distributions.{Gaussian, ChiSquared}
 import com.dvgodoy.spark.benford.constants._
+import org.apache.commons.math3.special.Gamma
 import org.apache.spark.rdd.RDD
 import play.api.libs.json._
 import play.api.libs.json.Reads._
@@ -12,8 +13,99 @@ import play.api.libs.functional.syntax._
 import scala.collection.immutable.Range
 import scala.collection.mutable.ListBuffer
 import scala.util.Try
+import org.apache.commons.math3.util.FastMath
 
 package object util {
+
+  def erfinv(x: Double): Double = {
+    var w: Double = -FastMath.log((1.0 - x) * (1.0 + x))
+    var p: Double = 0.0
+    if (w < 6.25) {
+      w = w - 3.125
+      p = -3.6444120640178196996e-21
+      p = -1.685059138182016589e-19 + p * w
+      p = 1.2858480715256400167e-18 + p * w
+      p = 1.115787767802518096e-17 + p * w
+      p = -1.333171662854620906e-16 + p * w
+      p = 2.0972767875968561637e-17 + p * w
+      p = 6.6376381343583238325e-15 + p * w
+      p = -4.0545662729752068639e-14 + p * w
+      p = -8.1519341976054721522e-14 + p * w
+      p = 2.6335093153082322977e-12 + p * w
+      p = -1.2975133253453532498e-11 + p * w
+      p = -5.4154120542946279317e-11 + p * w
+      p = 1.051212273321532285e-09 + p * w
+      p = -4.1126339803469836976e-09 + p * w
+      p = -2.9070369957882005086e-08 + p * w
+      p = 4.2347877827932403518e-07 + p * w
+      p = -1.3654692000834678645e-06 + p * w
+      p = -1.3882523362786468719e-05 + p * w
+      p = 0.0001867342080340571352 + p * w
+      p = -0.00074070253416626697512 + p * w
+      p = -0.0060336708714301490533 + p * w
+      p = 0.24015818242558961693 + p * w
+      p = 1.6536545626831027356 + p * w
+    } else if (w < 16.0) {
+      w = FastMath.sqrt(w) - 3.25
+      p = 2.2137376921775787049e-09
+      p = 9.0756561938885390979e-08 + p * w
+      p = -2.7517406297064545428e-07 + p * w
+      p = 1.8239629214389227755e-08 + p * w
+      p = 1.5027403968909827627e-06 + p * w
+      p = -4.013867526981545969e-06 + p * w
+      p = 2.9234449089955446044e-06 + p * w
+      p = 1.2475304481671778723e-05 + p * w
+      p = -4.7318229009055733981e-05 + p * w
+      p = 6.8284851459573175448e-05 + p * w
+      p = 2.4031110387097893999e-05 + p * w
+      p = -0.0003550375203628474796 + p * w
+      p = 0.00095328937973738049703 + p * w
+      p = -0.0016882755560235047313 + p * w
+      p = 0.0024914420961078508066 + p * w
+      p = -0.0037512085075692412107 + p * w
+      p = 0.005370914553590063617 + p * w
+      p = 1.0052589676941592334 + p * w
+      p = 3.0838856104922207635 + p * w
+    } else if (!w.isInfinite) {
+      w = FastMath.sqrt(w) - 5.0
+      p = -2.7109920616438573243e-11
+      p = -2.5556418169965252055e-10 + p * w
+      p = 1.5076572693500548083e-09 + p * w
+      p = -3.7894654401267369937e-09 + p * w
+      p = 7.6157012080783393804e-09 + p * w
+      p = -1.4960026627149240478e-08 + p * w
+      p = 2.9147953450901080826e-08 + p * w
+      p = -6.7711997758452339498e-08 + p * w
+      p = 2.2900482228026654717e-07 + p * w
+      p = -9.9298272942317002539e-07 + p * w
+      p = 4.5260625972231537039e-06 + p * w
+      p = -1.9681778105531670567e-05 + p * w
+      p = 7.5995277030017761139e-05 + p * w
+      p = -0.00021503011930044477347 + p * w
+      p = -0.00013871931833623122026 + p * w
+      p = 1.0103004648645343977 + p * w
+      p = 4.8499064014085844221 + p * w
+    } else {
+      p = Inf
+    }
+    p * x
+  }
+
+  def icdf(mu: Double, sigma: Double, p: Double): Double = {
+    mu + sigma * math.sqrt(2.0) * erfinv(2 * p - 1)
+  }
+
+  def erf(x: Double): Double = {
+    val res = if (FastMath.abs(x) > 40) {
+      if (x > 0) 1 else - 1
+    } else {
+      val ret: Double = Gamma.regularizedGammaP(0.5, x * x, 1.0e-15, 10000)
+      if (x < 0) -ret else ret
+    }
+    res
+  }
+
+  def cdf(mu: Double, sigma: Double, x: Double) = .5 * (1 + erf( (x - mu)/ (math.sqrt(2.0) * sigma)))
   /*
   #
   # Function ported and adapted from R package "boot: Bootstrap Functions (Originally by Angelo Canty for S)"
@@ -41,9 +133,12 @@ package object util {
     out(k :== 0.0) := tstar(0)
     out(k :== R) := tstar(R.toInt - 1)
     val temp = inds((ints :^^ BitVector.ones(ints.length)) :& (k :!= 0.0) :& (k :!= R)).toArray.map(_ - 1).toSeq
-    val temp1 = DenseVector(alpha(temp).toArray.map(Gaussian(0,1).icdf(_)))
-    val temp2 = DenseVector((k(temp) :/ (R + 1.0)).toArray.map(Gaussian(0,1).icdf(_)))
-    val temp3 = DenseVector(((k(temp) :+ 1.0) :/ (R + 1.0)).toArray.map(Gaussian(0,1).icdf(_)))
+    //val temp1 = DenseVector(alpha(temp).toArray.map(Gaussian(0,1).icdf(_)))
+    val temp1 = DenseVector(alpha(temp).toArray.map(icdf(0,1,_)))
+    //val temp2 = DenseVector((k(temp) :/ (R + 1.0)).toArray.map(Gaussian(0,1).icdf(_)))
+    val temp2 = DenseVector((k(temp) :/ (R + 1.0)).toArray.map(icdf(0,1,_)))
+    //val temp3 = DenseVector(((k(temp) :+ 1.0) :/ (R + 1.0)).toArray.map(Gaussian(0,1).icdf(_)))
+    val temp3 = DenseVector(((k(temp) :+ 1.0) :/ (R + 1.0)).toArray.map(icdf(0,1,_)))
     val tk = tstar(k(temp).toArray.map(_.toInt - 1).toSeq)
     val tk1 = tstar(k(temp).toArray.map(_.toInt).toSeq)
     out(temp) := tk :+ ((temp1 :- temp2) :/ (temp3 :- temp2) :* (tk1 :- tk))
@@ -64,16 +159,19 @@ package object util {
   private def bcaCI(conf: Array[Double], t0: Double, tParam: Array[Double]): Array[CI] = {
     return if (tParam.length > 0) {
       val t = tParam.filter(!_.isInfinite)
-      val w = Gaussian(0, 1).icdf(t.count(_ < t0) / t.length.toDouble)
+      //val w = Gaussian(0, 1).icdf(t.count(_ < t0) / t.length.toDouble)
+      val w = icdf(0, 1, t.count(_ < t0) / t.length.toDouble)
       assert(!w.isInfinite)
       val alpha = conf.map(v => (1 - v) / 2.0) ++ conf.map(v => (1 + v) / 2.0)
-      val zalpha = alpha.map(v => Gaussian(0, 1).icdf(v))
+      //val zalpha = alpha.map(v => Gaussian(0, 1).icdf(v))
+      val zalpha = alpha.map(v => icdf(0, 1, v))
       val tmean = average(t)
       val tdiff = t.map(_ - tmean)
       val a = average(tdiff.map(pow(_, 3))) / (6 * pow(average(tdiff.map(pow(_, 2))), 1.5))
       assert(!a.isInfinite)
       val adjAlpha = zalpha.map(v => (v, 1 - a * (w + v)))
-        .map { case (v, c) => Gaussian(0, 1).cdf(w + (w + v) / c) }
+        //.map { case (v, c) => Gaussian(0, 1).cdf(w + (w + v) / c) }
+        .map { case (v, c) => cdf(0, 1, w + (w + v) / c) }
       val qq = normInter(t, adjAlpha)
       val resultMatrix = DenseMatrix.horzcat(DenseMatrix(conf).reshape(conf.length, 1), qq, DenseMatrix(Array.fill(conf.length)(t0)).t)
       val result = for (i <- (0 until conf.length)) yield resultMatrix(i, ::).t.toArray

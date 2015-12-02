@@ -27,7 +27,8 @@ libraryDependencies  ++= Seq(
 )
 
 dependencyOverrides ++= Set(
-  "com.fasterxml.jackson.core" % "jackson-databind" % "2.4.4"
+  "com.fasterxml.jackson.core" % "jackson-databind" % "2.4.4",
+  "org.apache.commons" % "commons-math3" % "3.2"
 )
 
 assemblyOption in assembly := (assemblyOption in assembly).value.copy(includeScala = false)
