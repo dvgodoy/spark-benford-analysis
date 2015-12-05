@@ -90,7 +90,7 @@ object SBA {
   def getSBAImage(sbaData: SBAData, threshold: Double = 0.8, whiteBackground: Boolean = true): String = {
     assert(threshold <= 1.0)
     val ordered = sbaData.pixels.filter(_ > -300.0).sorted
-    val pixelThreshold = ordered((ordered.length * (if (threshold == 0.0) 0.8 else threshold)).toInt)
+    val pixelThreshold = ordered((ordered.length * (if (threshold == 0.0) 0.8 else threshold) - 1).toInt)
 
     val filtered = sbaData.pixels.map(value => if (value > pixelThreshold) value else 0)
     val bmin = filtered.min
