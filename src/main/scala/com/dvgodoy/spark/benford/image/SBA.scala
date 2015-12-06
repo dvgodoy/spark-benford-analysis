@@ -56,7 +56,7 @@ object SBA {
       val height = photo1.getHeight
       Good(SBAImageData(width, height, pixels))
     } else {
-      Bad(One("This should be a gray-scale image."))
+      Bad(One("Please submit a gray-scale image."))
     }
   }
 
@@ -64,11 +64,15 @@ object SBA {
     val photo1 = ImageIO.read(new File(fileName))
     var dummy: Array[Int] = null
 
-    val pixels = photo1.getData.getPixels(0,0,photo1.getWidth,photo1.getHeight,dummy)
-    val width = photo1.getWidth
-    val height = photo1.getHeight
-
-    SBAImageData(width, height, pixels)
+    val numDataElem = photo1.getData.getNumDataElements
+    if (numDataElem == 1) {
+      val pixels = photo1.getData.getPixels(0, 0, photo1.getWidth, photo1.getHeight, dummy)
+      val width = photo1.getWidth
+      val height = photo1.getHeight
+      Good(SBAImageData(width, height, pixels))
+    } else {
+      Bad(One("Please submit a gray-scale image."))
+    }
   }
 
   def performSBA(sc: SparkContext, imageData: SBAImageData, wSize: Int = 15)(implicit jobId: JobId): SBAData = {

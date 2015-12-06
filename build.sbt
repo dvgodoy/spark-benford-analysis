@@ -11,6 +11,8 @@ scalaVersion := "2.11.6"
 
 sparkVersion := "1.4.1"
 
+ivyScala := ivyScala.value map { _.copy(overrideScalaVersion = true) }
+
 spName := "dvgodoy/spark-benford-analysis"
 
 licenses := Seq("Apache-2.0" -> url("http://opensource.org/licenses/Apache-2.0"))
@@ -19,6 +21,7 @@ libraryDependencies += "org.apache.spark" %% "spark-core" % "1.4.1" % "provided"
 
 libraryDependencies  ++= Seq(
   "org.scalactic" %% "scalactic" % "2.2.0",
+  "io.pjan" %% "play-json-scalactic" % "0.1.0",
   "org.scalanlp" %% "breeze" % "0.11.2",
   "org.scalanlp" %% "breeze-natives" % "0.11.2",
   "com.typesafe.play" %% "play-json" % "2.4.2",
@@ -39,6 +42,8 @@ resolvers += "Akka Repository" at "http://repo.akka.io/releases"
 resolvers += "Maven" at "http://repo1.maven.org/maven2"
 
 resolvers += "Typesafe Repo" at "http://repo.typesafe.com/typesafe/releases/"
+
+resolvers += "pjan at bintray" at "http://dl.bintray.com/pjan/maven"
 
 spShortDescription := "Benford Analysis for Apache Spark package"
 

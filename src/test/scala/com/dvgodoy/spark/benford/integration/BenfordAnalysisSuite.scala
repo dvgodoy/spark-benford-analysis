@@ -2,31 +2,30 @@ package com.dvgodoy.spark.benford.integration
 
 import com.dvgodoy.spark.benford.distributions.{Benford, Bootstrap}
 import com.dvgodoy.spark.benford.util._
-import org.apache.spark.rdd.RDD
 import play.api.libs.json._
 
 class BenfordAnalysisSuite extends SparkSuite {
   protected val boot = Bootstrap()
   protected val benf = Benford()
 
-  protected var data: DataByLevel = _
-  protected var basicBoot: BasicBoot = _
-  protected var dataStatsRDD: Array[RDD[((Long, Int), StatsDigits)]] = _
-  protected var sampleRDD: Array[RDD[StatsCIByLevel]] = _
-  protected var benfordRDD: Array[RDD[StatsCIByLevel]] = _
-  protected var resultsRDD: Array[RDD[ResultsByLevel]] = _
+  protected var data: DataByLevelMsg = _
+  protected var basicBoot: BasicBootMsg = _
+  protected var dataStatsRDD: Array[DataStatsMsg] = _
+  protected var sampleRDD: Array[StatsCIByLevelMsg] = _
+  protected var benfordRDD: Array[StatsCIByLevelMsg] = _
+  protected var resultsRDD: Array[ResultsByLevelMsg] = _
 
   implicit val jobId = JobId("test")
 
   override def loadAndProcessData(): Unit = {
     val numSamples = 1000
     data =  boot.loadData(sc, "./src/test/resources/datalevels.csv")
-    val idxs = data.levels.keys
+    val idxs = data.get.levels.keys
     basicBoot = boot.calcBasicBoot(sc, data, 1000)
-    dataStatsRDD = new Array[RDD[((Long, Int), StatsDigits)]](idxs.size)
-    sampleRDD = new Array[RDD[StatsCIByLevel]](idxs.size)
-    benfordRDD = new Array[RDD[StatsCIByLevel]](idxs.size)
-    resultsRDD = new Array[RDD[ResultsByLevel]](idxs.size)
+    dataStatsRDD = new Array[DataStatsMsg](idxs.size)
+    sampleRDD = new Array[StatsCIByLevelMsg](idxs.size)
+    benfordRDD = new Array[StatsCIByLevelMsg](idxs.size)
+    resultsRDD = new Array[ResultsByLevelMsg](idxs.size)
 
     for (groupId <- (0 to idxs.size - 1)) {
       dataStatsRDD(groupId) = boot.calcDataStats(data, groupId)
@@ -37,27 +36,27 @@ class BenfordAnalysisSuite extends SparkSuite {
   }
 
   test("loadData works") {
-    data.dataByLevelsRDD.count() must be(3000)
+    data.get.dataByLevelsRDD.count() must be(3000)
   }
 
   test("levelIdx assignment is correct") {
-    data.levels(0) must be(("L.1",0))
-    data.levels(1) must be(("L.1.A",1))
-    data.levels(2) must be(("L.1.A.1",2))
-    data.levels(3) must be(("L.1.A.2",2))
-    data.levels(4) must be(("L.1.B",1))
-    data.levels(5) must be(("L.1.B.3",2))
-    data.levels(6) must be(("L.1.B.4",2))
+    data.get.levels(0) must be(("L.1",0))
+    data.get.levels(1) must be(("L.1.A",1))
+    data.get.levels(2) must be(("L.1.A.1",2))
+    data.get.levels(3) must be(("L.1.A.2",2))
+    data.get.levels(4) must be(("L.1.B",1))
+    data.get.levels(5) must be(("L.1.B.3",2))
+    data.get.levels(6) must be(("L.1.B.4",2))
   }
 
   test("hierarchical pointers are correct") {
-    data.hierarchy(0) must be(Array(4,1))
-    data.hierarchy(1) must be(Array(2,3))
-    data.hierarchy(2) must be(Array(-1))
-    data.hierarchy(3) must be(Array(-1))
-    data.hierarchy(4) must be(Array(6,5))
-    data.hierarchy(5) must be(Array(-1))
-    data.hierarchy(6) must be(Array(-1))
+    data.get.hierarchy(0) must be(Array(4,1))
+    data.get.hierarchy(1) must be(Array(2,3))
+    data.get.hierarchy(2) must be(Array(-1))
+    data.get.hierarchy(3) must be(Array(-1))
+    data.get.hierarchy(4) must be(Array(6,5))
+    data.get.hierarchy(5) must be(Array(-1))
+    data.get.hierarchy(6) must be(Array(-1))
   }
 
   test("sample CIs by Group ID are correct") {

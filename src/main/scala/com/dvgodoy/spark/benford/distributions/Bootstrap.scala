@@ -7,10 +7,13 @@ import com.dvgodoy.spark.benford.util._
 import org.apache.commons.math3.random.MersenneTwister
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.scalactic._
 import play.api.libs.json._
 import scala.collection.mutable
 import play.api.libs.functional.syntax._
 import play.api.libs.json.Reads._
+import Accumulation._
+import play.json.extras.scalactic.ScalacticFormats._
 
 class Bootstrap extends Serializable {
   private def rollToss(nOutcomes: Int, rand: RandBasis): (Int, Double) = {
@@ -82,10 +85,7 @@ class Bootstrap extends Serializable {
   }
 
   protected case class OutcomeByLevel(idx: Long, idxLevel: Long, depth: Int, sample: Int, n: Int)
-/*  protected def generateBootstrapOutcomes(bootstrapTableRDD: RDD[(Long, (Int, (Int, Double)))], levelsRDD: RDD[Level], aliasMap: Map[Long,AliasTable]): RDD[OutcomeByLevel] = {
-    val findIdxLevelRDD = levelsRDD.map { case Level(idxLevel, depth, idx, value, d1d2) => (idx, (idxLevel, depth))}
-    bootstrapTableRDD.join(findIdxLevelRDD).map { case (idx, ((sample, (roll, toss)), (idxLevel, depth))) => OutcomeByLevel(idx, idxLevel, depth, sample, findOutcome(aliasMap(idxLevel), (roll, toss))) }
-  }*/
+
   protected def generateBootstrapOutcomes(bootstrapTableRDD: RDD[(Long, (Int, (Int, Double)))], data: DataByLevel, aliasMap: Map[Long,AliasTable], groupId: Int): RDD[OutcomeByLevel] = {
     val depth = data.levels(groupId)._2
     val idxGroup = data.dataByLevelsRDD
@@ -96,15 +96,8 @@ class Bootstrap extends Serializable {
       .map { case (idx, (sample, (roll, toss))) => OutcomeByLevel(idx, groupId, depth, sample, findOutcome(aliasMap(groupId), (roll, toss))) }
   }
 
-
   protected case class MomentsByLevel(idxLevel: Long, depth: Int, sample: Int, moments: MomentsDigits)
-/*  protected def calcMomentsSamples(bootRDD: RDD[OutcomeByLevel]): RDD[MomentsByLevel] = {
-    bootRDD.map { case OutcomeByLevel(idx, idxLevel, depth, sample, n) => ((idxLevel, depth, sample, n), 1) }
-      .reduceByKey(_ + _)
-      .map { case ((idxLevel, depth, sample, n), count) => ((idxLevel, depth, sample), calcMoments(n, count))}
-      .reduceByKey(_ + _)
-      .map { case ((idxLevel, depth, sample), moments) => MomentsByLevel(idxLevel, depth, sample, moments) }
-  }*/
+
   protected def calcMomentsSamples(bootRDD: RDD[OutcomeByLevel], groupId: Int): RDD[MomentsByLevel] = {
     bootRDD.filter { case OutcomeByLevel(idx, idxLevel, depth, sample, n) => idxLevel == groupId}
       .map { case OutcomeByLevel(idx, idxLevel, depth, sample, n) => ((idxLevel, depth, sample, n), 1) }
@@ -128,207 +121,220 @@ class Bootstrap extends Serializable {
       .map { case ((idxLevel, depth), (groupStats, dataStats)) => StatsCIByLevel(idxLevel, depth, groupStats.calcBcaCI(conf, dataStats)) }
   }
 
-/*  protected def calcDataStats(levelsRDD: RDD[Level]): RDD[((Long, Int), StatsDigits)] = {
-    val originalRDD = levelsRDD.map { case Level(idxLevel, depth, idx, value, d1d2) => OutcomeByLevel(idx, idxLevel, depth, 1, d1d2) }
-    val momentsOriginalRDD = calcMomentsSamples(originalRDD)
-    val statsOriginalRDD = calcStatsSamples(momentsOriginalRDD)
-    groupStats(statsOriginalRDD)
-  }*/
-  def calcDataStats(data: DataByLevel, groupId: Int): RDD[((Long, Int), StatsDigits)] = {
-    val originalRDD = data.dataByLevelsRDD.map { case Level(idxLevel, depth, idx, value, d1d2) => OutcomeByLevel(idx, idxLevel, depth, 1, d1d2) }
-    val momentsOriginalRDD = calcMomentsSamples(originalRDD, groupId)
-    val statsOriginalRDD = calcStatsSamples(momentsOriginalRDD)
-    groupStats(statsOriginalRDD)
+  def calcDataStats(data: DataByLevelMsg, groupId: Int): DataStatsMsg = {
+    withGood(data) { (data) =>
+      val originalRDD = data.dataByLevelsRDD.map { case Level(idxLevel, depth, idx, value, d1d2) => OutcomeByLevel(idx, idxLevel, depth, 1, d1d2) }
+      val momentsOriginalRDD = calcMomentsSamples(originalRDD, groupId)
+      val statsOriginalRDD = calcStatsSamples(momentsOriginalRDD)
+      groupStats(statsOriginalRDD)
+    }
   }
 
-  protected def findLevels(dataLevelRDD: RDD[((Long, Double, Int), Array[String])])(implicit jobId: JobId): DataByLevel = {
+  protected def findLevels(dataLevelRDD: RDD[((Long, Double, Int), Array[String])])(implicit jobId: JobId): DataByLevelMsg = {
     val sc = dataLevelRDD.context
-    sc.setJobDescription(jobId.id + ".findLevels")
+    try {
+      sc.setJobDescription(jobId.id + ".findLevels")
 
-    val concatRDD = dataLevelRDD
-      .map { case (value, levels) => (value, levels
-                                  .zipWithIndex
-                                  .map { case (nextLevels, idx) => (levels.slice(0, idx + 1).foldLeft("L")(_ + "." + _), idx) } ) }
-    val levelsRDD = concatRDD.flatMap { case (value, levels) => levels.map { case (name, depth) => ((name, depth), value) } }
+      val concatRDD = dataLevelRDD
+        .map { case (value, levels) => (value, levels
+          .zipWithIndex
+          .map { case (nextLevels, idx) => (levels.slice(0, idx + 1).foldLeft("L")(_ + "." + _), idx) } ) }
+      val levelsRDD = concatRDD.flatMap { case (value, levels) => levels.map { case (name, depth) => ((name, depth), value) } }
 
-    val uniqLevelsRDD = levelsRDD.map { case (classif, value) => classif }.distinct().sortBy(identity).zipWithIndex()
-    val uniqLevels = uniqLevelsRDD.collect()
-    val levels = uniqLevels.map{ case ((classif, depth), idx) => (idx, (classif, depth))}.toMap
+      val uniqLevelsRDD = levelsRDD.map { case (classif, value) => classif }.distinct().sortBy(identity).zipWithIndex()
 
-    val hierarchies = concatRDD.map { case (value, levels) => levels.map(_._1).toList }.distinct().collect()
-    val idxHierarchies = hierarchies
-      .map(levels => levels.flatMap(hierarchy => uniqLevels
-                                  .filter{case ((level, depth), idxLevel) => level == hierarchy}.map{case ((level, depth), idxLevel) => idxLevel }))
+      val uniqLevels = uniqLevelsRDD.collect()
+      val levels = if (uniqLevels.length > 0) {
+        Good(uniqLevels.map { case ((classif, depth), idx) => (idx, (classif, depth)) }.toMap)
+      } else {
+        Bad(One(s"Error: There are no valid values in the dataset."))
+      }
 
-    val pointers = idxHierarchies.flatMap(levels => levels.zipWithIndex.map{case (top, idx) => (top, if (idx < (levels.length - 1)) levels(idx + 1) else -1)})
-      .distinct.groupBy(_._1).map{case (top, below) => (top, below.map(_._2))}
+      val hierarchies = concatRDD.map { case (value, levels) => levels.map(_._1).toList }.distinct().collect()
+      val idxHierarchies = hierarchies
+        .map(levels => levels.flatMap(hierarchy => uniqLevels
+          .filter{case ((level, depth), idxLevel) => level == hierarchy}.map{case ((level, depth), idxLevel) => idxLevel }))
 
-    val dataByLevelsRDD = uniqLevelsRDD.join(levelsRDD).map { case ((name, depth), (idxLevel, (idx, value, d1d2))) => Level(idxLevel, depth, idx, value, d1d2) }
+      val pointers = idxHierarchies.flatMap(levels => levels.zipWithIndex.map{case (top, idx) => (top, if (idx < (levels.length - 1)) levels(idx + 1) else -1)})
+        .distinct.groupBy(_._1).map{case (top, below) => (top, below.map(_._2))}
 
-    val freqByLevel = calcFrequenciesLevels(dataByLevelsRDD)
-    sc.setJobDescription("")
-    DataByLevel(levels, pointers, freqByLevel, dataByLevelsRDD)
+      val dataByLevelsRDD = uniqLevelsRDD.join(levelsRDD).map { case ((name, depth), (idxLevel, (idx, value, d1d2))) => Level(idxLevel, depth, idx, value, d1d2) }
+
+      val freqByLevel = calcFrequenciesLevels(dataByLevelsRDD)
+
+      withGood(levels, Good(pointers), Good(freqByLevel), Good(dataByLevelsRDD)) {
+        DataByLevel(_, _, _, _)
+      }
+    } finally {
+      sc.setJobDescription("")
+    }
   }
 
   protected def calcFrequenciesLevels(levelsRDD: RDD[Level])(implicit jobId: JobId): Array[FreqByLevel] = {
     val sc = levelsRDD.sparkContext
-    sc.setJobDescription(jobId.id + ".calcFrequenciesLevels")
-    val levelsCountRDD = levelsRDD
-      .map { case Level(idxLevel, depth, idx, value, d1d2) => ((idxLevel, d1d2), 1) }
-      .reduceByKey(_ + _)
-      .map { case ((idxLevel, d1d2), count) => (idxLevel, (d1d2, count)) }
+    try {
+      sc.setJobDescription(jobId.id + ".calcFrequenciesLevels")
+      val levelsCountRDD = levelsRDD
+        .map { case Level(idxLevel, depth, idx, value, d1d2) => ((idxLevel, d1d2), 1) }
+        .reduceByKey(_ + _)
+        .map { case ((idxLevel, d1d2), count) => (idxLevel, (d1d2, count)) }
 
-    val freqLevels = levelsCountRDD.groupByKey().map { case (idxLevel, counts) => FreqByLevel(idxLevel, calcFrequencies(counts.toList)) }.collect()
-    sc.setJobDescription("")
-    freqLevels
+      val freqLevels = levelsCountRDD.groupByKey().map { case (idxLevel, counts) => FreqByLevel(idxLevel, calcFrequencies(counts.toList)) }.collect()
+      freqLevels
+    } finally {
+      sc.setJobDescription("")
+    }
   }
 
-  def loadData(sc: SparkContext, filePath: String)(implicit jobId: JobId): DataByLevel = {
+  def loadData(sc: SparkContext, filePath: String)(implicit jobId: JobId): DataByLevelMsg = {
     // TO DO - reorder csv
     // TO DO - find levels in decreasing order of distinct values in each one of them
-    sc.setJobDescription(jobId.id + ".loadData")
-    val dataLevelRDD = sc.textFile(filePath)
-      .map(line => line.split(",")
-        .map(_.trim.replace("\"","")))
-      .map(line => (parseDouble(line(0)), line.slice(1,line.length)))
-      .filter { case (value, levels) => value match { case Some(v) if v != 0.0 => true; case Some(v) if v == 0.0 => false; case None => false } }
-      .map { case (value, levels) => (value.getOrElse(0.0), levels) }
-      .zipWithIndex()
-      .map { case ((value, levels), idx) => ((idx, value, findD1D2(value)), levels) }
+    try {
+      sc.setJobDescription(jobId.id + ".loadData")
+      val dataLevelRDD = sc.textFile(filePath)
+        .map(line => line.split(",")
+          .map(_.trim.replace("\"","")))
+        .map(line => (parseDouble(line(0)), line.slice(1,line.length)))
+        .map{ case (value, levels) => (value, if (levels.length == 0) Array("") else levels) }
+        .filter { case (value, levels) => value match { case Some(v) if v != 0.0 => true; case Some(v) if v == 0.0 => false; case None => false } }
+        .map { case (value, levels) => (value.getOrElse(0.0), levels) }
+        .zipWithIndex()
+        .map { case ((value, levels), idx) => ((idx, value, findD1D2(value)), levels) }
 
-    val dataByLevel = findLevels(dataLevelRDD)
-    sc.setJobDescription("")
-    dataByLevel
+      val dataByLevel = findLevels(dataLevelRDD)
+      dataByLevel
+    } catch {
+      case ex: Exception => Bad(One(s"Error: ${ex.getMessage}"))
+    } finally {
+      sc.setJobDescription("")
+    }
   }
 
-  def calcBasicBoot(sc: SparkContext, data: DataByLevel, numSamples: Int): BasicBoot = {
-    val sampleSize = data.freqByLevel.filter { case FreqByLevel(idxLevel, freq) => idxLevel == 0 }(0).freq.count
-    val aliasMap = data.freqByLevel.map { case FreqByLevel(idxLevel, freq) => (idxLevel, buildAliasTable(freq.freqD1D2)) }.toMap
-    val aliasMapBenf = data.freqByLevel.map { case FreqByLevel(idxLevel, freq) => (idxLevel, buildAliasTable(BenfordProbabilitiesD1D2)) }.toMap
-    val bootTableRDD = generateBootstrapTable(sc, sampleSize, numSamples)
-    BasicBoot(aliasMap, aliasMapBenf, bootTableRDD)
+  def calcBasicBoot(sc: SparkContext, data: DataByLevelMsg, numSamples: Int): BasicBootMsg = {
+    withGood(data) { (dbl) =>
+      val sampleSize = dbl.freqByLevel.filter { case FreqByLevel(idxLevel, freq) => idxLevel == 0 }(0).freq.count
+      val aliasMap = dbl.freqByLevel.map { case FreqByLevel(idxLevel, freq) => (idxLevel, buildAliasTable(freq.freqD1D2)) }.toMap
+      val aliasMapBenf = dbl.freqByLevel.map { case FreqByLevel(idxLevel, freq) => (idxLevel, buildAliasTable(BenfordProbabilitiesD1D2)) }.toMap
+      val bootTableRDD = generateBootstrapTable(sc, sampleSize, numSamples)
+      BasicBoot(aliasMap, aliasMapBenf, bootTableRDD)
+    }
   }
 
-/*  def calcSampleCIs(sc: SparkContext, data: DataByLevel, numSamples: Int = 25000): RDD[StatsCIByLevel] = {
-    val dataStatsRDD = calcDataStats(data.dataByLevelsRDD)
-    val aliasMap = data.freqByLevel.map { case FreqByLevel(idxLevel, freq) => (idxLevel, buildAliasTable(freq.freqD1D2)) }.toMap
-    val sampleSize = data.freqByLevel.filter { case FreqByLevel(idxLevel, freq) => idxLevel == 0 }(0).freq.count
-
-    val bootTableRDD = generateBootstrapTable(sc, sampleSize, numSamples)
-    val bootRDD = generateBootstrapOutcomes(bootTableRDD, data.dataByLevelsRDD, aliasMap)
-    val momentsRDD = calcMomentsSamples(bootRDD)
-    val statsRDD = calcStatsSamples(momentsRDD)
-    val groupStatsRDD = groupStats(statsRDD)
-    val statsCIRDD = calcStatsCIs(dataStatsRDD, groupStatsRDD, Array(0.975, 0.99))
-    statsCIRDD
-  }*/
-  def calcSampleCIs(basicBoot: BasicBoot, dataStatsRDD: RDD[((Long, Int), StatsDigits)], data: DataByLevel, groupId: Int): RDD[StatsCIByLevel] = {
-    val bootRDD = generateBootstrapOutcomes(basicBoot.bootTableRDD, data, basicBoot.aliasMap, groupId)
-    val momentsRDD = calcMomentsSamples(bootRDD, groupId)
-    val statsRDD = calcStatsSamples(momentsRDD)
-    val groupStatsRDD = groupStats(statsRDD)
-    val statsCIRDD = calcStatsCIs(dataStatsRDD, groupStatsRDD, Array(0.975, 0.99))
-    statsCIRDD
+  def calcSampleCIs(basicBoot: BasicBootMsg, dataStatsRDD: DataStatsMsg, data: DataByLevelMsg, groupId: Int): StatsCIByLevelMsg = {
+    withGood(basicBoot, dataStatsRDD, data) { (basicBoot, dataStatsRDD, data) =>
+      val bootRDD = generateBootstrapOutcomes(basicBoot.bootTableRDD, data, basicBoot.aliasMap, groupId)
+      val momentsRDD = calcMomentsSamples(bootRDD, groupId)
+      val statsRDD = calcStatsSamples(momentsRDD)
+      val groupStatsRDD = groupStats(statsRDD)
+      val statsCIRDD = calcStatsCIs(dataStatsRDD, groupStatsRDD, Array(0.975, 0.99))
+      statsCIRDD
+    }
   }
 
-  def calcResults(bootSampleRDD: RDD[StatsCIByLevel], bootBenfordRDD: RDD[StatsCIByLevel]): RDD[ResultsByLevel] = {
-    val overlapRDD = calcOverlaps(bootSampleRDD, bootBenfordRDD)
-    calcResultsByLevel(overlapRDD)
+  def calcResults(bootSampleRDD: StatsCIByLevelMsg, bootBenfordRDD: StatsCIByLevelMsg): ResultsByLevelMsg = {
+    withGood(bootSampleRDD, bootBenfordRDD) { (bootSampleRDD, bootBenfordRDD) =>
+      val overlapRDD = calcOverlaps(bootSampleRDD, bootBenfordRDD)
+      calcResultsByLevel(overlapRDD)
+    }
   }
 
-  /*def getCIsByGroupId(statsCIRDD: RDD[StatsCIByLevel], groupId: Int)(implicit jobId: JobId): JsValue = {
-    val sc = statsCIRDD.sparkContext
-    sc.setJobDescription(jobId.id + ".getCIsByGroupId")
-    val CIsRDD = statsCIRDD.filter { case StatsCIByLevel(idxLevel, depth, stats) => idxLevel == groupId }
-    val CIs = CIsRDD.collect()
-    sc.setJobDescription("")
-    val json = Json.toJson(CIs)
-    pruneCIs(json)
+  def getCIs(statsCIRDD: StatsCIByLevelMsg)(implicit jobId: JobId): JsValue = {
+    try {
+      statsCIRDD match {
+        case Good(rdd) => {
+          val sc = rdd.sparkContext
+          sc.setJobDescription(jobId.id + ".getCIs")
+          val CIs = rdd.collect()
+          sc.setJobDescription("")
+          val json = Json.toJson(CIs)
+          pruneCIs(json)
+        }
+        case Bad(e) => Json.obj("error" -> Json.toJson(e.head))
+      }
+    } catch {
+      case ex: Exception => Json.toJson(s"Error: ${ex.getMessage}")
+    }
   }
 
-  def getCIsByLevel(statsCIRDD: RDD[StatsCIByLevel], level: Int)(implicit jobId: JobId): JsValue = {
-    val sc = statsCIRDD.sparkContext
-    sc.setJobDescription(jobId.id + ".getCIsByLevel")
-    val CIsRDD = statsCIRDD.filter { case StatsCIByLevel(idxLevel, depth, stats) => depth == level }
-    val CIs = CIsRDD.collect()
-    sc.setJobDescription("")
-    val json = Json.toJson(CIs)
-    pruneCIs(json)
-  }*/
-  def getCIs(statsCIRDD: RDD[StatsCIByLevel])(implicit jobId: JobId): JsValue = {
-    val sc = statsCIRDD.sparkContext
-    sc.setJobDescription(jobId.id + ".getCIs")
-    val CIs = statsCIRDD.collect()
-    sc.setJobDescription("")
-    val json = Json.toJson(CIs)
-    pruneCIs(json)
+  def getResults(resultsRDD: ResultsByLevelMsg)(implicit jobId: JobId): JsValue = {
+    try {
+      resultsRDD match {
+        case Good(rdd) => {
+          val sc = rdd.sparkContext
+          sc.setJobDescription(jobId.id + ".getResultsByGroupId")
+          val res = rdd.collect()
+          sc.setJobDescription("")
+          val json = Json.toJson(res)
+          pruneResults(json)
+        }
+        case Bad(e) => Json.obj("error" -> Json.toJson(e.head))
+      }
+    } catch {
+      case ex: Exception => Json.toJson(s"Error: ${ex.getMessage}")
+    }
   }
 
-  /*def getResultsByGroupId(resultsRDD: RDD[ResultsByLevel], groupId: Int)(implicit jobId: JobId): JsValue = {
-    val sc = resultsRDD.sparkContext
-    sc.setJobDescription(jobId.id + ".getResultsByGroupId")
-    val resRDD = resultsRDD.filter { case ResultsByLevel(idxLevel, depth, results) => idxLevel == groupId }
-    val res = resRDD.collect()
-    sc.setJobDescription("")
-    val json = Json.toJson(res)
-    pruneResults(json)
+  def getFrequenciesByGroupId(data: DataByLevelMsg, groupId: Int): JsValue = {
+    data match {
+      case Good(dbl) => {
+        val frequencies = dbl.freqByLevel.filter { case FreqByLevel(idxLevel, freq) => idxLevel == groupId }
+          .map{ case FreqByLevel(idxLevel, freq) => freq }
+        Json.toJson(frequencies)
+      }
+      case Bad(e) => Json.obj("error" -> Json.toJson(e.head))
+    }
   }
 
-  def getResultsByLevel(resultsRDD: RDD[ResultsByLevel], level: Int)(implicit jobId: JobId): JsValue = {
-    val sc = resultsRDD.sparkContext
-    sc.setJobDescription(jobId.id + ".getResultsByLevel")
-    val resRDD = resultsRDD.filter { case ResultsByLevel(idxLevel, depth, results) => depth == level }
-    val res = resRDD.collect()
-    sc.setJobDescription("")
-    val json = Json.toJson(res)
-    pruneResults(json)
-  }*/
-  def getResults(resultsRDD: RDD[ResultsByLevel])(implicit jobId: JobId): JsValue = {
-    val sc = resultsRDD.sparkContext
-    sc.setJobDescription(jobId.id + ".getResultsByGroupId")
-    val res = resultsRDD.collect()
-    sc.setJobDescription("")
-    val json = Json.toJson(res)
-    pruneResults(json)
+  def getFrequenciesByLevel(data: DataByLevelMsg, level: Int): JsValue = {
+    data match {
+      case Good(dbl) => {
+        val groupIds = dbl.levels.filter{case (idxLevel, (name, depth)) => depth == level}.keySet
+        val frequencies = dbl.freqByLevel.filter { case FreqByLevel(idxLevel, freq) => groupIds.contains(idxLevel) }
+          .map{ case FreqByLevel(idxLevel, freq) => freq }
+        Json.toJson(frequencies)
+      }
+      case Bad(e) => Json.obj("error" -> Json.toJson(e.head))
+    }
   }
 
-
-  def getFrequenciesByGroupId(data: DataByLevel, groupId: Int): JsValue = {
-    val frequencies = data.freqByLevel.filter { case FreqByLevel(idxLevel, freq) => idxLevel == groupId }
-                      .map{ case FreqByLevel(idxLevel, freq) => freq }
-    Json.toJson(frequencies)
+  def getGroups(data: DataByLevelMsg): JsValue = {
+    data match {
+      case Good(dbl) => {
+        val groups = (dbl.levels.toList.sortBy(_._1) zip dbl.hierarchy.toList.sortBy(_._1))
+          .map{case ((idxLevel,(name,depth)),(idx,children)) => Group(idxLevel, depth, name.substring(2), children.sorted)}
+        Json.toJson(groups)
+      }
+      case Bad(e) => Json.obj("error" -> Json.toJson(e.head))
+    }
   }
 
-  def getFrequenciesByLevel(data: DataByLevel, level: Int): JsValue = {
-    val groupIds = data.levels.filter{case (idxLevel, (name, depth)) => depth == level}.keySet
-    val frequencies = data.freqByLevel.filter { case FreqByLevel(idxLevel, freq) => groupIds.contains(idxLevel) }
-      .map{ case FreqByLevel(idxLevel, freq) => freq }
-    Json.toJson(frequencies)
+  def getTestsByGroupId(data: DataByLevelMsg, groupId: Int): JsValue = {
+    data match {
+      case Good(dbl) => {
+        val frequencies = dbl.freqByLevel.filter { case FreqByLevel(idxLevel, freq) => idxLevel == groupId }
+          .map{ case FreqByLevel(idxLevel, freq) => freq }
+        Json.obj(
+          "z" -> Json.toJson(frequencies.map(_.zTest)),
+          "chisquared" -> Json.toJson(frequencies.map(_.chiTest))
+        )
+      }
+      case Bad(e) => Json.obj("error" -> Json.toJson(e.head))
+    }
   }
 
-  def getGroups(data: DataByLevel): JsValue = {
-    val groups = (data.levels.toList.sortBy(_._1) zip data.hierarchy.toList.sortBy(_._1))
-                .map{case ((idxLevel,(name,depth)),(idx,children)) => Group(idxLevel, depth, name.substring(2), children.sorted)}
-    Json.toJson(groups)
-  }
-
-  def getTestsByGroupId(data: DataByLevel, groupId: Int): JsValue = {
-    val frequencies = data.freqByLevel.filter { case FreqByLevel(idxLevel, freq) => idxLevel == groupId }
-      .map{ case FreqByLevel(idxLevel, freq) => freq }
-    Json.obj(
-        "z" -> Json.toJson(frequencies.map(_.zTest)),
-        "chisquared" -> Json.toJson(frequencies.map(_.chiTest))
-    )
-  }
-
-  def getTestsByLevel(data: DataByLevel, level: Int): JsValue = {
-    val groupIds = data.levels.filter{case (idxLevel, (name, depth)) => depth == level}.keySet
-    val frequencies = data.freqByLevel.filter { case FreqByLevel(idxLevel, freq) => groupIds.contains(idxLevel) }
-      .map{ case FreqByLevel(idxLevel, freq) => freq }
-    Json.obj(
-      "z" -> Json.toJson(frequencies.map(_.zTest)),
-      "chisquared" -> Json.toJson(frequencies.map(_.chiTest))
-    )
+  def getTestsByLevel(data: DataByLevelMsg, level: Int): JsValue = {
+    data match {
+      case Good(dbl) => {
+        val groupIds = dbl.levels.filter{case (idxLevel, (name, depth)) => depth == level}.keySet
+        val frequencies = dbl.freqByLevel.filter { case FreqByLevel(idxLevel, freq) => groupIds.contains(idxLevel) }
+          .map{ case FreqByLevel(idxLevel, freq) => freq }
+        Json.obj(
+          "z" -> Json.toJson(frequencies.map(_.zTest)),
+          "chisquared" -> Json.toJson(frequencies.map(_.chiTest))
+        )
+      }
+      case Bad(e) => Json.obj("error" -> Json.toJson(e.head))
+    }
   }
 
   def getSuspiciousGroups(jsonResults: JsValue): JsValue = {
