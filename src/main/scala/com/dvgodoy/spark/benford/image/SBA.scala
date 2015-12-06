@@ -9,7 +9,9 @@ import com.dvgodoy.spark.benford.util.JobId
 import org.apache.commons.codec.binary.Base64
 import org.apache.commons.io.IOUtils
 import org.apache.spark.SparkContext
+import org.scalactic._
 import scala.math._
+import scala.util.Try
 
 object SBA {
   case class SBAImageData(width: Int, height: Int, pixels: Array[Int])
@@ -42,16 +44,20 @@ object SBA {
     bgp
   }
 
-  def loadDirect(baos: java.io.ByteArrayOutputStream): SBAImageData = {
+  def loadDirect(baos: java.io.ByteArrayOutputStream): SBAImageData Or One[ErrorMessage] =  {
     val is = new ByteArrayInputStream(baos.toByteArray)
     val photo1 = ImageIO.read(is)
     var dummy: Array[Int] = null
 
-    val pixels = photo1.getData.getPixels(0,0,photo1.getWidth,photo1.getHeight,dummy)
-    val width = photo1.getWidth
-    val height = photo1.getHeight
-
-    SBAImageData(width, height, pixels)
+    val numDataElem = photo1.getData.getNumDataElements
+    if (numDataElem == 1) {
+      val pixels = photo1.getData.getPixels(0, 0, photo1.getWidth, photo1.getHeight, dummy)
+      val width = photo1.getWidth
+      val height = photo1.getHeight
+      Good(SBAImageData(width, height, pixels))
+    } else {
+      Bad(One("This should be a gray-scale image."))
+    }
   }
 
   def loadImage(fileName: String): SBAImageData  = {
@@ -104,8 +110,6 @@ object SBA {
     val db = new DataBufferByte(buffer, sbaData.width * sbaData.height)
     val raster = Raster.createWritableRaster(sm, db, null)
     val result = new BufferedImage(cm, raster, false, null)
-
-    //ImageIO.write(result, "png", new File(newFileName))
 
     val baos = new ByteArrayOutputStream()
     ImageIO.write(result, "png", baos)
