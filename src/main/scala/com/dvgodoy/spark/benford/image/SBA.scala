@@ -11,11 +11,15 @@ import org.apache.commons.io.IOUtils
 import org.apache.spark.SparkContext
 import org.scalactic._
 import scala.math._
-import scala.util.Try
+import Accumulation._
 
 object SBA {
   case class SBAImageData(width: Int, height: Int, pixels: Array[Int])
   case class SBAData(width: Int, height: Int, wSize: Int, pixels: Array[Double])
+
+  type SBAImageDataMsg = SBAImageData Or Every[ErrorMessage]
+  type SBADataMsg = SBAData Or Every[ErrorMessage]
+  type SBAEncodedMsg = String Or Every[ErrorMessage]
 
   def findD1(v: Double): Double = {
     if (v >= 1) floor(v) else findD1(v * 10)
@@ -44,83 +48,108 @@ object SBA {
     bgp
   }
 
-  def loadDirect(baos: java.io.ByteArrayOutputStream): SBAImageData Or One[ErrorMessage] =  {
-    val is = new ByteArrayInputStream(baos.toByteArray)
-    val photo1 = ImageIO.read(is)
-    var dummy: Array[Int] = null
+  def loadDirect(baos: java.io.ByteArrayOutputStream): SBAImageDataMsg =  {
+    try {
+      val is = new ByteArrayInputStream(baos.toByteArray)
+      val photo1 = ImageIO.read(is)
+      var dummy: Array[Int] = null
 
-    val numDataElem = photo1.getData.getNumDataElements
-    if (numDataElem == 1) {
-      val pixels = photo1.getData.getPixels(0, 0, photo1.getWidth, photo1.getHeight, dummy)
-      val width = photo1.getWidth
-      val height = photo1.getHeight
-      Good(SBAImageData(width, height, pixels))
-    } else {
-      Bad(One("Please submit a gray-scale image."))
+      val numDataElem = photo1.getData.getNumDataElements
+      if (numDataElem == 1) {
+        val pixels = photo1.getData.getPixels(0, 0, photo1.getWidth, photo1.getHeight, dummy)
+        val width = photo1.getWidth
+        val height = photo1.getHeight
+        Good(SBAImageData(width, height, pixels))
+      } else {
+        Bad(One("Error: Please submit a gray-scale image."))
+      }
+    } catch {
+      case ex: Exception => Bad(One(s"Error: ${ex.getMessage}"))
+    }
+
+  }
+
+  def loadImage(fileName: String): SBAImageDataMsg  = {
+    try {
+      val photo1 = ImageIO.read(new File(fileName))
+      var dummy: Array[Int] = null
+
+      val numDataElem = photo1.getData.getNumDataElements
+      if (numDataElem == 1) {
+        val pixels = photo1.getData.getPixels(0, 0, photo1.getWidth, photo1.getHeight, dummy)
+        val width = photo1.getWidth
+        val height = photo1.getHeight
+        Good(SBAImageData(width, height, pixels))
+      } else {
+        Bad(One("Error: Please submit a gray-scale image."))
+      }
+    } catch {
+      case ex: Exception => Bad(One(s"Error: ${ex.getMessage}"))
     }
   }
 
-  def loadImage(fileName: String): SBAImageData  = {
-    val photo1 = ImageIO.read(new File(fileName))
-    var dummy: Array[Int] = null
+  def performSBA(sc: SparkContext, imageData: SBAImageDataMsg, wSize: Int = 15)(implicit jobId: JobId): SBADataMsg = {
+    try {
+      withGood(imageData) { (imageData) =>
+        val broadWSize = sc.broadcast(wSize)
+        val broadWidth = sc.broadcast(imageData.width)
+        val broadPixels = sc.broadcast(imageData.pixels)
 
-    val numDataElem = photo1.getData.getNumDataElements
-    if (numDataElem == 1) {
-      val pixels = photo1.getData.getPixels(0, 0, photo1.getWidth, photo1.getHeight, dummy)
-      val width = photo1.getWidth
-      val height = photo1.getHeight
-      Good(SBAImageData(width, height, pixels))
-    } else {
-      Bad(One("Please submit a gray-scale image."))
+        val sbaWidth = imageData.width - wSize + 1
+        val sbaHeight = imageData.height - wSize + 1
+
+        if (wSize > imageData.width || wSize > imageData.height) throw new IllegalArgumentException("window size cannot exceed image dimensions.")
+
+        val init = (0 to sbaHeight - 1).toArray
+        val initRDD = sc.parallelize(init)
+        val offsetsRDD = initRDD.flatMap(offsetY => (0 to broadWidth.value - broadWSize.value).map(offsetX => (offsetX, offsetY)))
+        val binsRDD = offsetsRDD.map { case (offsetX, offsetY) => (0 to broadWSize.value - 1).toArray
+          .map(_ + offsetX)
+          .flatMap(single => (0 to broadWSize.value - 1).toArray.map(_ * broadWidth.value + single + offsetY * broadWidth.value))
+        }
+
+        val pixelBinsRDD = binsRDD.map(bin => bin map broadPixels.value)
+        val bgpBinsRDD = pixelBinsRDD.map(bgp)
+        val bgpBins = bgpBinsRDD.collect()
+
+        SBAData(sbaWidth, sbaHeight, wSize, bgpBins)
+      }
+    } catch {
+      case ex: Exception => Bad(One(s"Error: ${ex.getMessage}"))
     }
   }
 
-  def performSBA(sc: SparkContext, imageData: SBAImageData, wSize: Int = 15)(implicit jobId: JobId): SBAData = {
-    val broadWSize = sc.broadcast(wSize)
-    val broadWidth = sc.broadcast(imageData.width)
-    val broadPixels = sc.broadcast(imageData.pixels)
+  def getSBAImage(sbaData: SBADataMsg, threshold: Double = 0.8, whiteBackground: Boolean = true): SBAEncodedMsg = {
+    try {
+      val thresholdOk = if (threshold <= 1.0) Good(threshold) else Bad(One("Error: Threshold should be less or equal than 1.0."))
 
-    val sbaWidth = imageData.width - wSize + 1
-    val sbaHeight = imageData.height - wSize + 1
+      withGood(sbaData, thresholdOk) { (sbaData, threshold) =>
+        val ordered = sbaData.pixels.filter(_ > -300.0).sorted
+        val pixelThreshold = ordered((ordered.length * (if (threshold == 0.0) 0.8 else threshold) - 1).toInt)
 
-    val init = (0 to sbaHeight - 1).toArray
-    val initRDD = sc.parallelize(init)
-    val offsetsRDD = initRDD.flatMap(offsetY => (0 to broadWidth.value - broadWSize.value).map(offsetX => (offsetX, offsetY)))
-    val binsRDD = offsetsRDD.map{ case (offsetX, offsetY) => (0 to broadWSize.value - 1).toArray
-      .map(_ + offsetX)
-      .flatMap(single => (0 to broadWSize.value - 1).toArray.map(_ * broadWidth.value + single + offsetY * broadWidth.value))}
+        val filtered = sbaData.pixels.map(value => if (value > pixelThreshold) value else 0)
+        val bmin = filtered.min
+        val bmax = filtered.max
+        val bdiff = bmax - bmin
+        val buffer = filtered.map(value => if (value == 0) (if (whiteBackground) -1 else 0) else (128.0 * (value - bmin) / bdiff)).map(_.toByte)
 
-    val pixelBinsRDD = binsRDD.map(bin => bin map broadPixels.value)
-    val bgpBinsRDD = pixelBinsRDD.map(bgp)
-    val bgpBins = bgpBinsRDD.collect()
+        val cs = ColorSpace.getInstance(ColorSpace.CS_GRAY)
+        val cm = new ComponentColorModel(cs, Array(8), false, true, Transparency.OPAQUE, DataBuffer.TYPE_BYTE)
+        val sm = cm.createCompatibleSampleModel(sbaData.width, sbaData.height)
+        val db = new DataBufferByte(buffer, sbaData.width * sbaData.height)
+        val raster = Raster.createWritableRaster(sm, db, null)
+        val result = new BufferedImage(cm, raster, false, null)
 
-    SBAData(sbaWidth, sbaHeight, wSize, bgpBins)
-  }
-
-  def getSBAImage(sbaData: SBAData, threshold: Double = 0.8, whiteBackground: Boolean = true): String = {
-    assert(threshold <= 1.0)
-    val ordered = sbaData.pixels.filter(_ > -300.0).sorted
-    val pixelThreshold = ordered((ordered.length * (if (threshold == 0.0) 0.8 else threshold) - 1).toInt)
-
-    val filtered = sbaData.pixels.map(value => if (value > pixelThreshold) value else 0)
-    val bmin = filtered.min
-    val bmax = filtered.max
-    val bdiff = bmax - bmin
-    val buffer = filtered.map(value => if (value == 0) (if (whiteBackground) -1 else 0) else (128.0*(value - bmin)/bdiff)).map(_.toByte)
-
-    val cs = ColorSpace.getInstance(ColorSpace.CS_GRAY)
-    val cm = new ComponentColorModel(cs, Array(8), false, true, Transparency.OPAQUE, DataBuffer.TYPE_BYTE)
-    val sm = cm.createCompatibleSampleModel(sbaData.width, sbaData.height)
-    val db = new DataBufferByte(buffer, sbaData.width * sbaData.height)
-    val raster = Raster.createWritableRaster(sm, db, null)
-    val result = new BufferedImage(cm, raster, false, null)
-
-    val baos = new ByteArrayOutputStream()
-    ImageIO.write(result, "png", baos)
-    val is = new ByteArrayInputStream(baos.toByteArray)
-    val bytes = IOUtils.toByteArray(is)
-    val bytes64 = Base64.encodeBase64(bytes)
-    val content = new String(bytes64)
-    content
+        val baos = new ByteArrayOutputStream()
+        ImageIO.write(result, "png", baos)
+        val is = new ByteArrayInputStream(baos.toByteArray)
+        val bytes = IOUtils.toByteArray(is)
+        val bytes64 = Base64.encodeBase64(bytes)
+        val content = new String(bytes64)
+        content
+      }
+    } catch {
+      case ex: Exception => Bad(One(s"Error: ${ex.getMessage}"))
+    }
   }
 }

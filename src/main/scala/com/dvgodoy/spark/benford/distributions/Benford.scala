@@ -9,13 +9,17 @@ import Accumulation._
 class Benford extends Bootstrap {
 
   def calcBenfordCIs(basicBoot: BasicBootMsg, dataStatsRDD: DataStatsMsg, data: DataByLevelMsg, groupId: Int): StatsCIByLevelMsg = {
-    withGood(basicBoot, dataStatsRDD, data) { (basicBoot, dataStatsRDD, data) =>
-      val bootRDD = generateBootstrapOutcomes(basicBoot.bootTableRDD, data, basicBoot.aliasMapBenf, groupId)
-      val momentsRDD = calcMomentsSamples(bootRDD, groupId)
-      val statsRDD = calcStatsSamples(momentsRDD)
-      val groupStatsRDD = groupStats(statsRDD)
-      val statsCIRDD = calcStatsCIs(dataStatsRDD, groupStatsRDD, Array(0.975, 0.99))
-      statsCIRDD
+    try {
+      withGood(basicBoot, dataStatsRDD, data) { (basicBoot, dataStatsRDD, data) =>
+        val bootRDD = generateBootstrapOutcomes(basicBoot.bootTableRDD, data, basicBoot.aliasMapBenf, groupId)
+        val momentsRDD = calcMomentsSamples(bootRDD, groupId)
+        val statsRDD = calcStatsSamples(momentsRDD)
+        val groupStatsRDD = groupStats(statsRDD)
+        val statsCIRDD = calcStatsCIs(dataStatsRDD, groupStatsRDD, Array(0.975, 0.99))
+        statsCIRDD
+      }
+    } catch {
+      case ex: Exception => Bad(One(s"Error: ${ex.getMessage}"))
     }
   }
 
