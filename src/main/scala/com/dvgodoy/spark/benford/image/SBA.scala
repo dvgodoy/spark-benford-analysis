@@ -48,20 +48,30 @@ object SBA {
     bgp
   }
 
+  def grayscale(pixels: Array[Int]): Array[Int] = {
+    (0 to pixels.length - 1).map(_ / 3)
+      .zip((pixels zip (Stream continually Array(0.299, 0.587, 0.114)).flatten).map{ case (rgb, weight) => rgb * weight })
+      .groupBy{ case (idx, rgb) => idx }
+      .map{ case (idx, pixel) => (idx, pixel.map{ case (idx, rgb) => rgb }.sum.toInt) }.toArray
+      .sortBy{ case (idx, pixel) => idx }
+      .map{ case (idx, pixel) => pixel }
+  }
+
   def loadDirect(baos: java.io.ByteArrayOutputStream): SBAImageDataMsg =  {
     try {
       val is = new ByteArrayInputStream(baos.toByteArray)
       val photo1 = ImageIO.read(is)
       var dummy: Array[Int] = null
 
+      val pixels = photo1.getData.getPixels(0, 0, photo1.getWidth, photo1.getHeight, dummy)
+      val width = photo1.getWidth
+      val height = photo1.getHeight
+
       val numDataElem = photo1.getData.getNumDataElements
       if (numDataElem == 1) {
-        val pixels = photo1.getData.getPixels(0, 0, photo1.getWidth, photo1.getHeight, dummy)
-        val width = photo1.getWidth
-        val height = photo1.getHeight
         Good(SBAImageData(width, height, pixels))
       } else {
-        Bad(One("Error: Please submit a gray-scale image."))
+        Good(SBAImageData(width, height, grayscale(pixels)))
       }
     } catch {
       case ex: Exception => Bad(One(s"Error: ${ex.getMessage}"))
@@ -74,14 +84,15 @@ object SBA {
       val photo1 = ImageIO.read(new File(fileName))
       var dummy: Array[Int] = null
 
+      val pixels = photo1.getData.getPixels(0, 0, photo1.getWidth, photo1.getHeight, dummy)
+      val width = photo1.getWidth
+      val height = photo1.getHeight
+
       val numDataElem = photo1.getData.getNumDataElements
       if (numDataElem == 1) {
-        val pixels = photo1.getData.getPixels(0, 0, photo1.getWidth, photo1.getHeight, dummy)
-        val width = photo1.getWidth
-        val height = photo1.getHeight
         Good(SBAImageData(width, height, pixels))
       } else {
-        Bad(One("Error: Please submit a gray-scale image."))
+        Good(SBAImageData(width, height, grayscale(pixels)))
       }
     } catch {
       case ex: Exception => Bad(One(s"Error: ${ex.getMessage}"))
