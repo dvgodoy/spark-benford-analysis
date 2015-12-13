@@ -57,33 +57,14 @@ If you want to build it yourself and include the uberjar in your application:
 > $SPARK_HOME/bin/spark-shell --jars spark-benford-analysis-assembly-0.0.1-SNAPSHOT.jar --driver-class-path spark-benford-analysis-assembly-0.0.1-SNAPSHOT.jar
 ```
 
-Otherwise, you can just use `--packages`:
-
-```
-> $SPARK_HOME/bin/spark-shell --packages dvgodoy:spark-benford-analysis:v0.0.1
-```
-
 ### sbt
 
-If you use the [sbt-spark-package plugin](https://github.com/databricks/sbt-spark-package),
-in your sbt build file, add:
-
-```scala
-spDependencies += "dvgodoy/spark-benford-analysis:v0.0.1"
-```
-
-Otherwise, choose one of the following:
+In your sbt build file, add:
 
 ```scala
 resolvers += "jitpack" at "https://jitpack.io"
 
 libraryDependencies += "com.github.dvgodoy" % "spark-benford-analysis" % "v0.0.1"
-```
-
-```scala
-resolvers += "Spark Packages Repo" at "http://dl.bintray.com/spark-packages/maven"
-
-libraryDependencies += "dvgodoy" % "spark-benford-analysis" % "v0.0.1"
 ```
 
 Examples
