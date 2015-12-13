@@ -60,7 +60,7 @@ If you want to build it yourself and include the uberjar in your application:
 Otherwise, you can just use `--packages`:
 
 ```
-> $SPARK_HOME/bin/spark-shell --packages dvgodoy:spark-benford-analysis:0.0.1-SNAPSHOT
+> $SPARK_HOME/bin/spark-shell --packages dvgodoy:spark-benford-analysis:v0.0.1
 ```
 
 ### sbt
@@ -69,7 +69,7 @@ If you use the [sbt-spark-package plugin](https://github.com/databricks/sbt-spar
 in your sbt build file, add:
 
 ```scala
-spDependencies += "dvgodoy/spark-benford-analysis:0.0.1-SNAPSHOT"
+spDependencies += "dvgodoy/spark-benford-analysis:v0.0.1"
 ```
 
 Otherwise, choose one of the following:
@@ -77,13 +77,13 @@ Otherwise, choose one of the following:
 ```scala
 resolvers += "jitpack" at "https://jitpack.io"
 
-libraryDependencies += "com.github.dvgodoy" % "spark-benford-analysis" % "0.0.1-SNAPSHOT"
+libraryDependencies += "com.github.dvgodoy" % "spark-benford-analysis" % "v0.0.1"
 ```
 
 ```scala
 resolvers += "Spark Packages Repo" at "http://dl.bintray.com/spark-packages/maven"
 
-libraryDependencies += "dvgodoy" % "spark-benford-analysis" % "0.0.1-SNAPSHOT"
+libraryDependencies += "dvgodoy" % "spark-benford-analysis" % "v0.0.1"
 ```
 
 Examples
