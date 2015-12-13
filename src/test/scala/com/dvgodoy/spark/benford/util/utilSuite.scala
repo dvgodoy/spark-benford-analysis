@@ -58,16 +58,4 @@ class utilSuite extends FunSuite with MustMatchers with BeforeAndAfterAll {
     stat.kurtosis.head must be(3.1428571428 +- tolerance)
   }
 
-  test("Regs calculation works") {
-
-  }
-
-  test("NormInter works") {
-
-  }
-
-  test("BCa confidence interval works") {
-
-  }
-
 }

@@ -14,7 +14,7 @@ import scala.math._
 import Accumulation._
 
 object SBA {
-  case class SBAImageData(width: Int, height: Int, pixels: Array[Int])
+  case class SBAImageData(width: Int, height: Int, pixels: Array[Int], originalImage: String)
   case class SBAData(width: Int, height: Int, wSize: Int, pixels: Array[Double])
 
   type SBAImageDataMsg = SBAImageData Or Every[ErrorMessage]
@@ -59,8 +59,12 @@ object SBA {
 
   def loadDirect(baos: java.io.ByteArrayOutputStream): SBAImageDataMsg =  {
     try {
-      val is = new ByteArrayInputStream(baos.toByteArray)
-      val photo1 = ImageIO.read(is)
+      // added
+      val bytes = IOUtils.toByteArray(new ByteArrayInputStream(baos.toByteArray))
+      val bytes64 = Base64.encodeBase64(bytes)
+      val image = new String(bytes64)
+
+      val photo1 = ImageIO.read(new ByteArrayInputStream(baos.toByteArray))
       var dummy: Array[Int] = null
 
       val pixels = photo1.getData.getPixels(0, 0, photo1.getWidth, photo1.getHeight, dummy)
@@ -69,9 +73,9 @@ object SBA {
 
       val numDataElem = photo1.getData.getNumDataElements
       if (numDataElem == 1) {
-        Good(SBAImageData(width, height, pixels))
+        Good(SBAImageData(width, height, pixels, image))
       } else {
-        Good(SBAImageData(width, height, grayscale(pixels)))
+        Good(SBAImageData(width, height, grayscale(pixels), image))
       }
     } catch {
       case ex: Exception => Bad(One(s"Error: ${ex.getMessage}"))
@@ -81,7 +85,14 @@ object SBA {
 
   def loadImage(fileName: String): SBAImageDataMsg  = {
     try {
-      val photo1 = ImageIO.read(new File(fileName))
+      // added
+      val file = new File(fileName)
+      val is = new FileInputStream(file)
+      val bytes = IOUtils.toByteArray(is)
+      val bytes64 = Base64.encodeBase64(bytes)
+      val image = new String(bytes64)
+
+      val photo1 = ImageIO.read(file)
       var dummy: Array[Int] = null
 
       val pixels = photo1.getData.getPixels(0, 0, photo1.getWidth, photo1.getHeight, dummy)
@@ -90,9 +101,9 @@ object SBA {
 
       val numDataElem = photo1.getData.getNumDataElements
       if (numDataElem == 1) {
-        Good(SBAImageData(width, height, pixels))
+        Good(SBAImageData(width, height, pixels, image))
       } else {
-        Good(SBAImageData(width, height, grayscale(pixels)))
+        Good(SBAImageData(width, height, grayscale(pixels), image))
       }
     } catch {
       case ex: Exception => Bad(One(s"Error: ${ex.getMessage}"))

@@ -18,11 +18,11 @@ abstract class SparkSuite extends FunSuite with MustMatchers with BeforeAndAfter
   }
 
   override protected def afterAll(): Unit = {
-    try {
+    /*try {
       sc.stop()
     } finally {
       super.afterAll()
-    }
+    }*/
   }
 
 }

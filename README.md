@@ -24,10 +24,28 @@ For further details on the procedures and the decision criteria, please refer to
 
 [SUH, I., HEADRICK, T.C.; MINABURO, S. An Effective and Efficient Analytic Technique: A Bootstrap Regression Procedure and Benford's Law. Journal of Forensic & Investigative Accounting, Vol. 3, n. 3, p.25-44, 2011.](http://epublications.marquette.edu/cgi/viewcontent.cgi?article=1045&context=account_fac)
 
+### Image Processing
+
+A novel use of Benford's Law is edge detection. Sets of pixels depicting edges show higher adherence to the expected distribution of the leading digit.
+
+So, researchers have developed a metric called Benford Goodness of Parameter (BGP) which is equivalent to an RMSE of the observed distribution that can be applied to subsets of pixels as defined by a sliding window over the original image. This procedure was named 2D-Scanning Benford Analysis (2D-SBA).
+
+Similarly to a convolutional kernel, the use of a transformation based on the BGP of a given set of pixels allows the detection of faint features in images.
+
+It is easy to see that even moderate-size images will span thousands of windows to be transformed. The goal of the ***Benford Analysis for Spark*** package is to quickly deliver results when applying the SBA procedure to images.
+
+For further details on edge detection using Benford's Law, please refer to:
+
+[BHOLE, G.; SHUKLA, A.; MAHESH, T.S. Benford Analysis: A useful paradigm for spectroscopic analysis](http://arxiv.org/abs/1408.5735)
+
 Installation
 ============
 
 To include this package in your Spark Application:
+
+### spark-shell, pyspark, or spark-submit
+
+If you want to build it yourself and include the uberjar in your application:
 
 1- Clone this repository with `git clone https://github.com/dvgodoy/spark-benford-analysis.git`.
 
@@ -35,15 +53,11 @@ To include this package in your Spark Application:
 
 3- Include the uberjar `spark-benford-analysis-assembly-0.0.1-SNAPSHOT.jar` both in the `--jars` and `--driver-class-path` parameters of `spark-shell`.
 
-Alternatively you may add the following lines to your sbt build file:
-
-```scala
-resolvers += "jitpack" at "https://jitpack.io"
-
-libraryDependencies += "com.github.dvgodoy" % "spark-benford-analysis" % "-SNAPSHOT"
+```
+> $SPARK_HOME/bin/spark-shell --jars spark-benford-analysis-assembly-0.0.1-SNAPSHOT.jar --driver-class-path spark-benford-analysis-assembly-0.0.1-SNAPSHOT.jar
 ```
 
-### spark-shell, pyspark, or spark-submit
+Otherwise, you can just use `--packages`:
 
 ```
 > $SPARK_HOME/bin/spark-shell --packages dvgodoy:spark-benford-analysis:0.0.1-SNAPSHOT
@@ -58,7 +72,13 @@ in your sbt build file, add:
 spDependencies += "dvgodoy/spark-benford-analysis:0.0.1-SNAPSHOT"
 ```
 
-Otherwise,
+Otherwise, choose one of the following:
+
+```scala
+resolvers += "jitpack" at "https://jitpack.io"
+
+libraryDependencies += "com.github.dvgodoy" % "spark-benford-analysis" % "0.0.1-SNAPSHOT"
+```
 
 ```scala
 resolvers += "Spark Packages Repo" at "http://dl.bintray.com/spark-packages/maven"
@@ -68,6 +88,43 @@ libraryDependencies += "dvgodoy" % "spark-benford-analysis" % "0.0.1-SNAPSHOT"
 
 Examples
 ========
+
+### Image Processing
+
+In order to perform edge detection on images, you need to import the following:
+
+```scala
+scala> import com.dvgodoy.spark.benford.image.SBA
+scala> import com.dvgodoy.spark.benford.util.JobId
+```
+
+You should start by importing the image you want to process:
+
+```scala
+scala> val image = loadImage("./src/test/resources/chess.png")
+```
+
+Next you should name your Spark Jobs by creating an implicit parameter of the JobId class. In this example we named our job "test".
+
+```scala
+scala> implicit val jobid = JobId("test")
+```
+The next step is to perform the 2D-Scanning Benford Analysis (SBA) on the loaded image. You also should provide the window size, that is, the size of the sliding window from where pixels will be analyzed. Size 15 is the default, but the results may vary depending on the features of your image. For images with sharp and well-defined edges, lower values (as low as 3) will yield better results.
+
+```scala
+scala> val sba = performSBA(sc, image, 15)
+```
+
+Then you can get the resulting image using ```getSBAImage```. You should also choose the percentage of pixels you want to discard: 80% (0.8) is the default value. Once again, results may vary depending on the features of the image: some images keep their features even when 95% of the pixels are discarded. The last parameter refers to background color: white (true) or black (false).
+
+```scala
+scala> val newImage = getSBAImage(sba, 0.8, true).get
+newImage: String = iVBORw0KGgoAAAANSUhEUgAAAkoAAAJKCAAAAAD2SDVFAACAAElEQVR4
+```
+
+The result is returned in a Base 64 encoded string.
+
+### Accounting
 
 In order to perform analyis of accounting records and fraud detection, you need to import the following objects and case classes:
 
@@ -120,7 +177,7 @@ Now you can load your file using:
 
 ```scala
 scala> val data =  boot.loadData(sc, filePath)
-data: com.dvgodoy.spark.benford.util.DataByLevel = DataByLevel(Map(0 -> (L.1,0), 5 -> (L.1.B.3,2), 1 -> (L.1.A,1), 6 -> (L.1.B.4,2), 2 -> (L.1.A.1,2), 3 -> (L.1.A.2,2), 4 -> (L.1.B,1)),Map(0 -> [J@181098bf, 5 -> [J@632b5c79, 1 -> [J@6a552721, 6 -> [J@3815a7d1, 2 -> [J@24dc150c, 3 -> [J@1d2d4d7a, 4 -> [J@5e020dd1),[Lcom.dvgodoy.spark.benford.util.package$FreqByLevel;@4bbc02ef,MapPartitionsRDD[27] at map at Bootstrap.scala:141)
+data: com.dvgodoy.spark.benford.util.DataByLevelMsg = Good(DataByLevel(Map(0 -> (L.1,0), 5 -> (L.1.B.3,2), 1 -> (L.1.A,1), 6 -> (L.1.B.4,2), 2 -> (L.1.A.1,2), 3 -> (L.1.A.2,2), 4 -> (L.1.B,1)),Map(0 -> [J@eee26bd, 5 -> [J@3d1c8f35, 1 -> [J@498f5728, 6 -> [J@39451d92, 2 -> [J@46610fc9, 3 -> [J@1fdd5517, 4 -> [J@2cd877d3),[Lcom.dvgodoy.spark.benford.util.package$FreqByLevel;@3d605657,MapPartitionsRDD[44] at map at Bootstrap.scala:165))
 ```
 
 The unique group IDs generated for each different combination of levels and its associated names and children can be found with:
@@ -178,6 +235,7 @@ levelFreq: play.api.libs.json.JsValue = [{"count":400,"d1d2":[0.04,0.055,0.03,0.
 The next step is to set the necessary (and lazy) Spark operations to calculate bootstrap estimates based on both your data and the exact Benford distribition. These estimates will be used to calculate the results, that is, the acceptance or rejection of the null hypothesis that your data IS a sample drawn from an actual Benford distribution.
 
 ```scala
+scala> val basicBoot = boot.calcBasicBoot(sc, data, 1000)
 scala> val sampleRDD = boot.calcSampleCIs(sc, data, numSamples)
 scala> val benfordRDD = benf.calcBenfordCIs(sc, data, numSamples)
 scala> val resultsRDD = boot.calcResults(sampleRDD, benfordRDD)
@@ -192,17 +250,13 @@ For an individual group, use:
 ```scala
 scala> val group = 0
 group: Int = 0
-scala> val groupResults = boot.getResultsByGroupId(resultsRDD, group)
+scala> val dataStatsRDD = boot.calcDataStats(data, group)
+scala> val sampleRDD =  boot.calcSampleCIs(basicBoot, dataStatsRDD, data, group)
+scala> val benfordRDD = benf.calcBenfordCIs(basicBoot, dataStatsRDD, data, group)
+scala> val resultsRDD = boot.calcResults(sampleRDD, benfordRDD)
+
+scala> val groupResults = boot.getResults(resultsRDD)
 groupResults: play.api.libs.json.JsValue = [{"id":0,"level":0,"results":{"n":1000,"statsDiag":true,"regsDiag":true,"d1d2":{"mean":{"overlaps":true,"contains":true},"variance":{"overlaps":true,"contains":true},"skewness":{"overlaps":true,"contains":true},"kurtosis":{"overlaps":true,"contains":true}},"d1":{"mean":{"overlaps":true,"contains":true},"variance":{"overlaps":true,"contains":true},"skewness":{"overlaps":true,"contains":true},"kurtosis":{"overlaps":true,"contains":true}},"d2":{"mean":{"overlaps":true,"contains":true},"variance":{"overlaps":true,"contains":true},"skewness":{"overlaps":true,"contains":true},"kurtosis":{"overlaps":true,"contains":true}},"reg":{"pearson":{"overlaps":true,"contains":true},"alpha0":{"overlaps":true,"contains":true},"alpha1":{"overlaps":true,"contains":...
-```
-
-For all groups in a given level, use:
-
-```scala
-scala> val level = 1
-level: Int = 1
-scala> val levelResults = boot.getResultsByLevel(resultsRDD, level)
-levelResults: play.api.libs.json.JsValue = [{"id":4,"level":1,"results":{"n":400,"statsDiag":true,"regsDiag":false,"d1d2":{"mean":{"overlaps":true,"contains":true},"variance":{"overlaps":true,"contains":true},"skewness":{"overlaps":true,"contains":true},"kurtosis":{"overlaps":true,"contains":true}},"d1":{"mean":{"overlaps":true,"contains":true},"variance":{"overlaps":true,"contains":true},"skewness":{"overlaps":true,"contains":true},"kurtosis":{"overlaps":true,"contains":true}},"d2":{"mean":{"overlaps":true,"contains":true},"variance":{"overlaps":true,"contains":true},"skewness":{"overlaps":true,"contains":true},"kurtosis":{"overlaps":true,"contains":true}},"reg":{"pearson":{"overlaps":true,"contains":true},"alpha0":{"overlaps":false,"contains":false},"alpha1":{"overlaps":false,"contain...
 ```
 
 A very detailed explanation of all JSON responses can be found [here](https://github.com/dvgodoy/spark-benford-analysis/blob/master/Responses.md).
@@ -210,10 +264,8 @@ A very detailed explanation of all JSON responses can be found [here](https://gi
 For a straightforward answer regarding the data being suspicious or not, you can call `getSuspiciousGroups` with any of the previous results:
 
 ```scala
-scala> getSuspiciousGroups(groupResults)
+scala> boot.getSuspiciousGroups(groupResults)
 res0: play.api.libs.json.JsValue = {"stats":[],"regs":[]}
-scala> getSuspiciousGroups(levelResults)
-res1: play.api.libs.json.JsValue = {"stats":[],"regs":[]}
 ```
 
 All suspicious groups are listed under the corresponding criteria under which they were classified as suspicious. In the example, our data complies with Benford's Law and therefore is not classified as suspicious.
@@ -225,9 +277,9 @@ The "regs" criteria follows Suh, Headrick and Minaburo (2011) and is based on th
 What's next
 ==============
 
-### Signal and Image Processing
+### Signal Processing
 
-Benford's Law can also be used to detect weak peaks in signals and edges in images.
+Benford's Law can also be used to detect weak peaks in signals.
 
 For further details, please refer to:
 
